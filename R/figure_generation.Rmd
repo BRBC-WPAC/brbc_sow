@@ -20,7 +20,7 @@ rm(list=ls())
 
 ## Run line below if you don't have pacman installed already
 # install.packages('pacman')
-pacman::p_load(reshape2, janitor, tidyverse)
+pacman::p_load(reshape2, janitor, data.table, tidyverse)
 
 # (C) LOAD FUNCTIONS-----
 
@@ -51,7 +51,7 @@ percentile_station <- function(data, max, parameter, site) {
 
 # generate percentile bins for plotting
 # either base::cut or santoku::chop work here
-df_all$colourcut <- cut(df_all$perc_bin, breaks = c(0, 0.1, 0.25, 0.75, 0.90, 1))
+#df_all$colourcut <- cut(df_all$perc_bin, breaks = c(0, 0.1, 0.25, 0.75, 0.90, 1))
 
 
 ## (C.2) Plot function to to graph percentile outputs -----
@@ -85,7 +85,8 @@ plot_site <- function(site) {
 }
 
 # (D) ESTABLISH FILEPATHS-----
-path.plot <- paste0("M:/OPS/SSR/South/Exchange/Limnology/Cecilia/BRBC/WQ Technical Committee/figs")
+#path.plot <- paste0("M:/OPS/SSR/South/Exchange/Limnology/Cecilia/BRBC/WQ Technical Committee/figs")
+path.plot <- paste0("C:/Users/nadine.taube/OneDrive - Government of Alberta/Documents/BRBC/State of the watershed/Analysis/Figures")
 
 
 ```
@@ -95,64 +96,128 @@ path.plot <- paste0("M:/OPS/SSR/South/Exchange/Limnology/Cecilia/BRBC/WQ Technic
 ```{r}
 # (A) CONSOLIDATED SWQ-FLOW DATASET -----
 ## from Eric Camm & Nadine Taube
-df <-read_csv(file.choose(), na=c("", "NA")) %>%
-  filter(variable_name != "TEMPERATURE WATER")
+df <- read_csv(file.choose(), na=c("", "NA")) %>% #pick consolidated_maxDL_flow
+  filter(variable_name != "TEMPERATURE WATER") %>%
+  mutate(Date = as.Date(sample_date, format = "%Y-%m-%d", origin = "1899-12-30"))
+
+df.flow <- read_csv(file.choose(), na=c("", "NA")) %>% #pick daily flows
+  mutate(Date = as.Date(Date, format = "%Y-%m-%d", origin = "1899-12-30"))
+
+df <- fread("./consolidated_data-maxDL-flow.csv") %>%
+  mutate(Date = as.Date(sample_date, format = "%Y-%m-%d", origin = "1899-12-30"))
+df.flow <- fread("./daily flows.csv") %>%
+  mutate(Date = as.Date(Date, format = "%Y-%m-%d", origin = "1899-12-30"))
+
+df <- consolidated_df_maxDL_flow %>% select(-c("detection_limit", "flow_cms")) %>%
+  mutate(Date = as.Date(sample_date, format = "%Y-%m-%d", origin = "1899-12-30"))
+df.flow <- dfl.flow %>%
+  mutate(DATE = as.Date(Date, format = "%Y-%m-%d"))
+
+str(df)
+str(df.flow)
+
+# file path has problems with the /
+df$WQTC_StationName[df$WQTC_StationName == "Ghost River u/s Waiparous confluence"] <- "Ghost River upstream Waiparous confluence"
+df.flow$WQTC_StationName[df.flow$WQTC_StationName == "Ghost River u/s Waiparous confluence"] <- "Ghost River upstream Waiparous confluence"
 
 ### TODO there appears to be duplicate rows - can we remove?
 
 # (B) ESTABLISH PARAMETERS -----
 maxyr = 2022 # cut-off year
 
-selectstn <-unique(df$WQTC_StationName.x)
+selectstn <-unique(df$WQTC_StationName)
 selectvar <-unique(df$variable_name)
 
 ### select only stations where there is flow data
 flow_availability <- df %>%
-  group_by(WQTC_StationName.x) %>%
+  group_by(WQTC_StationName) %>%
   summarise(non_NA_count = sum(!is.na(daily.flow.cms)))
 flow_availability_nonNA <- flow_availability %>%
   filter(non_NA_count >0)
-selectflowstn <- unique(flow_availability_nonNA$WQTC_StationName.x)
+selectflowstn <- unique(flow_availability_nonNA$WQTC_StationName)
 
 ### exclude turbidity, pH, SpCond for flux calculations
 selectfluxvar <-c("CHLORIDE DISSOLVED",
                   "SULPHATE DISSOLVED",
-                  "OXYGEN DISSOLVED (FIELD METER)",
                   "NITROGEN TOTAL (CALCD.)",
                   "TOTAL DISSOLVED SOLIDS (CALCD.)",
                   "CARBON TOTAL ORGANIC (TOC)",
                   "NITROGEN, NITRATE",
-                  "AMMONIA TOTAL",
+                  "AMMONIA TOTAL", #not in ECCC dataset
                   "ESCHERICHIA COLI", # different flux calculation
                   "PHOSPHORUS TOTAL (P)",
-                  "PHOSPHORUS TOTAL DISSOLVED")
+                  "PHOSPHORUS TOTAL DISSOLVED",
+                  "TOTAL SUSPENDED SOLIDS (TSS)")
 
 # (C) CALCULATE FLUX -----
 ### concentration (mg/L) x discharge (cms)
 ### e.g. for variables other than E.coli, 
-### (mg/L * 0.001 L/m3) * (m3/s * 86400 s/d) = 
-### (mg/m3) * (m3/d) = 
+### (mg/L * 1000 L/m3) * (m3/s * 86400 s/d) = 
 ### (mg/d)
 
 df.flux <- df %>%
   filter(variable_name %in% selectfluxvar) %>%
   filter(variable_name !="ESCHERICHIA COLI") %>% # remove E.coli because different calc - see below
-  mutate(flux = (measurement_value*0.001)*(daily.flow.cms*86400),
-         flux_unit = "mg/d")
+  mutate(flux = (measurement_maxDLsub*0.001)*(daily.flow.cms*86400),
+         flux_unit = "kg/d") #fixed
 
 ### for E.coli, 
-### (count/100mL * 0.1 mL/L * 0.001 L/m3) * (m3/s * 86400 s/d) = 
+### (count/100mL * 1000 mL/L * 1000 L/m3) * (m3/s * 86400 s/d) = #there is a thousand mL in a L not the other way around?
 ### (count/m3) * (m3/d) = 
 ### (count/d)
 
 df.flux.Ecoli <- df %>%
   filter(variable_name == "ESCHERICHIA COLI") %>%
-  mutate(flux = (measurement_value*0.1*0.001)*(daily.flow.cms*86400),
-         flux_unit = "No/d") # sometimes MPN/day....do we care?
+  mutate(flux = (measurement_maxDLsub*10*1000)*(daily.flow.cms*86400)/1000000,
+         flux_unit = "mio No/d") # sometimes MPN/day....do we care?
 
 ### join flux calculations back into df
 df.flux <- bind_rows(df.flux, df.flux.Ecoli)
-df <- left_join(df, df.flux[,c(4:6,14,17,25,26)], by=c("sample_date", "variable_name", "measurement_value", "WQTC_StationName.x", "daily.flow.cms"))
+colnames(df.flux)
+df.wFlux <- left_join(df, df.flux %>% select(sample_date, variable_name, Date, measurement_value, WQTC_StationName, daily.flow.cms, 
+                                             flux, flux_unit), 
+                      by=c("sample_date", "Date", "variable_name", "measurement_value", "WQTC_StationName", "daily.flow.cms")) %>%
+  as.data.frame()
+
+### check for duplicates
+df <- as.data.frame(df)
+dupes.df <- df %>%
+  group_by(station, sample_date, variable_name, measurement_value) %>% 
+  dplyr::mutate(dupe = n()>1) %>%
+  dplyr::filter(dupe == TRUE)
+
+dups1 = df[duplicated(df[c("station", "sample_date", "variable_name", "measurement_value")]),] # this one finds ~400 duplicates...
+dups2 = df.wFlux[duplicated(df.wFlux[c("station", "sample_date", "variable_name", "measurement_value")]),]
+df.wFlux = df.wFlux[!duplicated(df.wFlux[c("station", "sample_date", "variable_name", "measurement_value")]),]
+
+df.wFlux <- as.data.frame(df.wFlux) %>%
+  mutate(Date = as.Date(sample_date, format = "%Y-%m-%d", origin = "1899-12-30"))
+colnames(df.wFlux)
+
+overview5 <- df.wFlux %>% group_by(station, variable_name, YEAR) %>%
+  summarise(min.date = min(sample_date),
+            max.date = max(sample_date),
+            count.values = sum(!is.na(measurement_maxDLsub)),
+            count.LFLAG = sum(measurement_flag %in% c("L", "<")),
+            count.LFLAG2 = sum(measurement_flag2), #after substituting maxDL
+            perc.BDL = count.LFLAG/sum(!is.na(measurement_value))*100,
+            perc.BDL2 = count.LFLAG2/count.values*100, #after substituting maxDL
+            list.DLs = list(unique(measurement_value[measurement_flag %in% c("L", "<")])),
+            count.years = length(unique(year(sample_date))),
+            count.months = length(month(sample_date)),
+            Min  = quantile(measurement_maxDLsub, probs = 0, na.rm = TRUE),
+            p10 = quantile(measurement_maxDLsub, probs = 0.10, na.rm = TRUE),
+            p25 = quantile(measurement_maxDLsub, probs = 0.25, na.rm = TRUE),
+            Mean = mean(measurement_maxDLsub, na.rm = TRUE),
+            Mean.flow = mean(daily.flow.cms, na.rm = T),
+            Median = median(measurement_maxDLsub, na.rm = TRUE),
+            Median.flow = median(daily.flow.cms, na.rm = TRUE),
+            p75 = quantile(measurement_maxDLsub, probs = 0.75, na.rm = TRUE),
+            sum.flux.kg_yr = sum(flux),
+            p90 = quantile(measurement_maxDLsub, probs = 0.90, na.rm = TRUE),
+            Max  = quantile(measurement_maxDLsub, probs = 1, na.rm = TRUE),
+            StDev  = sd(measurement_maxDLsub, na.rm = TRUE))
+fwrite(overview5, "./summary annual wFlux.csv")
 
 
 # (D) CALCULATE PERCENTILE BINS (CONC) -----
@@ -162,18 +227,31 @@ df.percbin = NULL
 for (i in selectstn){
   for (j in selectvar){
     
-    subdf <- df %>%
-      filter(WQTC_StationName.x == i) %>%
+    subdf <- df.wFlux %>%
+      filter(WQTC_StationName == i) %>%
       filter(variable_name == j) %>%
       filter(YEAR != maxyr) %>%
-      filter(is.na(measurement_value) != TRUE)
+      filter(is.na(measurement_maxDLsub) != TRUE)
     
-    perc_distribution <- ecdf(subdf$measurement_value)
+    subdf.flux <- df.wFlux %>%
+      filter(WQTC_StationName == i) %>%
+      filter(variable_name == j) %>%
+      filter(YEAR != maxyr) %>%
+      filter(is.na(flux) != TRUE)
+    
+    tryCatch({ # just to see eventual error messages for any of the stations e.g. Big Hill Creek has just one year and LL and Canmore NH3 doesn't exist
+    perc_distribution <- ecdf(subdf$measurement_maxDLsub)
+  }, error= function(e){
+    print(paste(i, j, sep = " "))
+    conditionMessage(e)
+  })
+    
+    #perc_distribution <- ecdf(subdf$measurement_maxDLsub)
     
     df.percbin.new <- subdf %>%
-      group_by(WQTC_StationName.x, variable_name, YEAR) %>% # group by year to generate percentiles for each year
-      summarize(avg = median(measurement_value)) %>% # comparing median against percentiles, could also use mean here
-      mutate(perc_bin = perc_distribution(avg)) %>%
+      group_by(WQTC_StationName, variable_name, YEAR) %>% # group by year to generate percentiles for each year
+      summarize(med = median(measurement_maxDLsub)) %>% # comparing median against percentiles, could also use mean here
+      mutate(perc_bin = perc_distribution(med)) %>%
       mutate(colourcut = cut(perc_bin, breaks = c(0, 0.1, 0.25, 0.75, 0.90, 1))) # generate percentile bins for plotting
     
     # add it to df.percbin
@@ -182,8 +260,40 @@ for (i in selectstn){
   }
 }
 
+# for flux
+df.percbin2 = NULL
+for (i in selectflowstn){
+  for (j in selectfluxvar){
+    
+    subdf <- df.wFlux %>%
+      filter(WQTC_StationName == i) %>%
+      filter(variable_name == j) %>%
+      filter(YEAR != maxyr) %>%
+      filter(is.na(flux) != TRUE)
+    
+    tryCatch({ # just to see eventual error messages for any of the stations e.g. Big Hill Creek has just one year and LL and Canmore NH3 doesn't exist
+    perc_distribution <- ecdf(subdf$flux)
+  }, error= function(e){
+    print(paste(i, j, sep = " "))
+    conditionMessage(e)
+  })
+    
+    df.percbin.new <- subdf %>%
+      group_by(WQTC_StationName, variable_name, YEAR) %>% # group by year to generate percentiles for each year
+      summarize(med = median(flux)) %>% # comparing median against percentiles, could also use mean here
+      mutate(perc_bin.flux = perc_distribution(med)) %>%
+      mutate(colourcut.flux = cut(perc_bin.flux, breaks = c(0, 0.1, 0.25, 0.75, 0.90, 1))) # generate percentile bins for plotting
+    
+    # add it to df.percbin
+    df.percbin2 <-bind_rows(df.percbin2, df.percbin.new)
+    
+  }
+}
+
 ## join df.percbin with df
-df.all <-left_join(df, df.percbin, by=c("WQTC_StationName.x", "variable_name", "YEAR"))
+df.all1 <- left_join(df.wFlux, df.percbin, by=c("WQTC_StationName", "variable_name", "YEAR"))
+
+df.all <- left_join(df.all1, df.percbin2, by=c("WQTC_StationName", "variable_name", "YEAR"))
 
 ```
 
@@ -191,13 +301,27 @@ df.all <-left_join(df, df.percbin, by=c("WQTC_StationName.x", "variable_name", "
 
 ```{r}
 # (A) FIGURE: FLOW -----
+# better to use the complete daily flows instead of matched daily flows e.g. they do not sample WQual during high flow
+# need to figure out the straight lines for seasonal stations --> check NSR loading script
+df.flow$Value[df.flow$Value < 0] <- NA # Highwood > Carseland during 2013 flood
+
+df.flow.complete <- df.flow %>% 
+  mutate(YEAR = year(Date)) %>%
+  filter(!is.na(Date)) %>%
+  group_by(WQTC_StationName) %>%
+  arrange(Date) %>%
+  complete(DATE = seq.Date(as.Date(min(DATE)), as.Date(max(DATE)), by ="day"))
+
+
+
+#could add the days that were sampled in a different colour
 for (i in selectflowstn){ # only do for stations that have flow data
   
   # subset data
-  df.p.flow <-df %>% subset(WQTC_StationName.x==i & variable_name==j)
+  df.p.flow <- df.flow.complete %>% subset(WQTC_StationName==i)
   
-  p.flow <-ggplot(data=df.p.flow, aes(x=MONTH_YEAR, y=daily.flow.cms)) +
-    geom_line() +
+  p.flow <- ggplot(data=df.p.flow, aes(x=DATE, y=Value)) +
+    geom_line(size = 1) + #change back to line when we add NAs
     scale_x_date(date_breaks="1 year", date_labels="%Y") +
     labs(title="Flow Data",
          subtitle=i,
@@ -218,11 +342,13 @@ for (i in selectstn){
   for (j in selectvar){
     
     df.p.conc <- df.all %>%
-      filter(WQTC_StationName.x == i) %>%
+      filter(WQTC_StationName == i) %>%
       filter(variable_name == j) %>%
       filter(YEAR != maxyr)
     
-    p.conc <- ggplot(df.p.conc, aes(x = MONTH_YEAR, y = measurement_value, group = YEAR, fill = colourcut)) +
+    unit = unique(df.p.conc$unit_code)
+    
+    p.conc <- ggplot(df.p.conc, aes(x = MONTH_YEAR, y = measurement_maxDLsub, group = YEAR, fill = colourcut)) +
       geom_boxplot() +
       # stat_summary(fun = "mean",col='red',geom='point') + #to add mean data point to plots
       scale_y_log10() +
@@ -240,11 +366,12 @@ for (i in selectstn){
         labels = c("<10th", "10th - 24th", "25th - 75th", "76th - 90th", ">90th", "Not ranked")
         ) +
       theme_bw() +
-      theme(axis.text.x = element_text(face="bold", angle = 90, vjust = 0.5, hjust=1),
+      theme(panel.grid.minor = element_blank(),
+            axis.text.x = element_text(face="bold", angle = 90, vjust = 0.5, hjust=1),
             axis.text.y = element_text(face="bold"))
     
     # export figure
-    ggsave(plot=p.conc, path=path.plot, filename=paste0(i,  "_conc.jpeg"))
+    ggsave(plot=p.conc, path=path.plot, filename=paste0(i,"_",j,  "_conc.jpeg"))
     
   }
 }
@@ -255,11 +382,11 @@ for (i in selectflowstn){ # only stations with flow
   for (j in selectfluxvar){ # only variables in concentrations
     
     df.p.flux <- df.all %>%
-      filter(WQTC_StationName.x == i) %>%
+      filter(WQTC_StationName == i) %>%
       filter(variable_name == j) %>%
       filter(YEAR != maxyr)
     
-    p.flux <- ggplot(df.p.flux, aes(x = MONTH_YEAR, y = flux, group = YEAR, fill = colourcut)) +
+    p.flux <- ggplot(df.p.flux, aes(x = MONTH_YEAR, y = flux, group = YEAR, fill = colourcut.flux)) + # should probably do the colours on the flux not conc?
       geom_boxplot() +
       # stat_summary(fun = "mean",col='red',geom='point') + #to add mean data point to plots
       scale_y_log10() +
@@ -281,7 +408,7 @@ for (i in selectflowstn){ # only stations with flow
             axis.text.y = element_text(face="bold"))
     
     # export figure
-    ggsave(plot=p.conc, path=path.plot, filename=paste0(i,  "_flux.jpeg"))
+    ggsave(plot=p.flux, path=path.plot, filename=paste0(i,"_",j,  "_flux.jpeg"))
     
   }
 }
