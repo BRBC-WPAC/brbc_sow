@@ -1,5 +1,5 @@
 # Author: Eric Camm - City of Calgary
-# Date: 2024-02-23
+# Date: 2024-04-05
 # Script to consolidate WQ data for BRBC SOW
 
 #### SETUP ####
@@ -10,18 +10,20 @@ library(janitor)
 library(openxlsx)
 library(data.table)
 library(zoo)
+library(readxl)
 
 # for Nadine
-wd ="C:/Users/nadine.taube/OneDrive - Government of Alberta/Documents/BRBC/State of the watershed/Analysis"  
-setwd(wd)
+# wd ="C:/Users/nadine.taube/OneDrive - Government of Alberta/Documents/BRBC/State of the watershed/Analysis"  
+# setwd(wd)
 
+#FUNCTIONS
 count_num <- function(x) {sum(!is.na(x))}
 count_NA <- function(x) {sum(is.na(x))}
 
 # vector of SOW parameters
 wq_parameters <- c(
   "TOTAL DISSOLVED SOLIDS (CALCD.)",
-  "PH (LAB)",
+  "PH",
   "SPECIFIC CONDUCTANCE (FIELD)",
   "TURBIDITY",
   "NITROGEN, NITRATE",
@@ -34,18 +36,59 @@ wq_parameters <- c(
   "SODIUM ADSORPTION RATIO (CALCD.)",
   "CARBON TOTAL ORGANIC (TOC)",
   "ESCHERICHIA COLI",
-  "OXYGEN DISSOLVED (FIELD METER)",
-  "TEMPERATURE WATER"
+  "TOTAL SUSPENDED SOLIDS (TSS)"
 )
 
 #### CITY OF CALGARY ####
-coc_df <- read_csv(here("data", "Watershed_Surface_Water_Quality_Data_CityofCalgary.csv")) %>%
-  clean_names()
+  coc_df <- read_csv(here("data", "Watershed_Surface_Water_Quality_Data_CityofCalgary.csv")) %>%
+    clean_names()
+  
+  # convert to standard date, strip time for flow join on later
+  coc_df$sample_date <- mdy_hm(coc_df$sample_date) 
+  
+  #Total Nitrogen calculation  
+  #need to add in TN after 2018
+  #will not have ID number for this calculated value
+  coc_tn <- coc_df %>%
+    mutate(year = year(sample_date)) %>% 
+    filter(year > 2018) %>% 
+    filter(parameter %in% c("NOx (Calculated)", "Total Kjeldahl Nitrogen (TKN)")) %>% 
+    select(-id, -numeric_result, -result_qualifier) %>% #needed for pivoting
+    pivot_wider(names_from = parameter, values_from = formatted_result) %>% 
+    mutate(`NOx (Calculated)_num` = as.numeric(`NOx (Calculated)`)) %>% #create new numeric column to retain censored values
+    mutate(`Total Kjedahl Nitrogen (TKN)_num` = as.numeric(`Total Kjeldahl Nitrogen (TKN)`)) %>% #create new numeric column to retain censored values
+    replace_na(.,list(`NOx (Calculated)_num` = 0, `Total Kjedahl Nitrogen (TKN)_num` = 0)) %>%
+    mutate(`Total Nitrogen` = `NOx (Calculated)_num` + `Total Kjedahl Nitrogen (TKN)_num`) %>% #TN calculation
+    select(-c(`NOx (Calculated)_num`,`Total Kjedahl Nitrogen (TKN)_num`))  #remove numeric columns
+  
+    
+  coc_tn$`Total Nitrogen`[coc_tn$`Total Nitrogen` == 0] <- NA #when both NOx and TKN are censored substitute NA
+  
+coc_tn <- coc_tn %>%  pivot_longer(cols = -sample_site:-year, 
+               names_to = "parameter", 
+               values_to = "formatted_result",
+               values_transform = list(formatted_result = "as.character")) %>% 
+  relocate(formatted_result, .before = result_units) 
 
-# convert to standard date, strip time for flow join on later
-coc_df$sample_date <- mdy_hm(coc_df$sample_date) %>%
-  as_date()
+coc_tn <- coc_tn %>% 
+  mutate(result_qualifier = case_when(
+    grepl("<", formatted_result) ~ "<",
+    TRUE ~ NA
+  ))
 
+coc_tn$numeric_result <- coc_tn$formatted_result
+coc_tn$numeric_result <- gsub("<", "", coc_tn$numeric_result) 
+coc_tn <- coc_tn %>% 
+  relocate("result_qualifier", .before = "formatted_result") %>% 
+  relocate("numeric_result", .before = result_qualifier) %>% 
+  relocate("parameter", .after = "sample_date")
+
+coc_tn$numeric_result <- as.numeric(coc_tn$numeric_result)
+
+coc_df <- full_join(coc_df, coc_tn) %>%
+  select(-year)
+ 
+#add agency 
 coc_df <- coc_df %>%
   add_column(agency = "City of Calgary")
 
@@ -72,8 +115,8 @@ coc_df <- coc_df %>%
   add_column(flow_cms = NA)
 
 # change parameter names to AEPA format
-coc_df$variable_name[coc_df$parameter == "Total Dissolved Solids (TDS)(Calculated)"] <- "TOTAL DISSOLVED SOLIDS (CALCD.)"
-coc_df$variable_name[coc_df$variable_name == "pH"] <- "PH (LAB)"
+coc_df$variable_name[coc_df$variable_name == "Total Dissolved Solids (TDS)(Calculated)"] <- "TOTAL DISSOLVED SOLIDS (CALCD.)"
+coc_df$variable_name[coc_df$variable_name == "pH"] <- "PH"
 coc_df$variable_name[coc_df$variable_name == "Specific Conductance (Field)"] <- "SPECIFIC CONDUCTANCE (FIELD)"
 coc_df$variable_name[coc_df$variable_name == "Turbidity"] <- "TURBIDITY"
 coc_df$variable_name[coc_df$variable_name == "Nitrate (NO3-N)"] <- "NITROGEN, NITRATE"
@@ -86,8 +129,9 @@ coc_df$variable_name[coc_df$variable_name == "Sulphate (SO4)"] <- "SULPHATE DISS
 coc_df$variable_name[coc_df$variable_name == "Sodium Adsorption Ratio (SAR)(Calculated)"] <- "SODIUM ADSORPTION RATIO (CALCD.)"
 coc_df$variable_name[coc_df$variable_name == "Total Organic Carbon (TOC)"] <- "CARBON TOTAL ORGANIC (TOC)"
 coc_df$variable_name[coc_df$variable_name == "E.coli"] <- "ESCHERICHIA COLI"
-coc_df$variable_name[coc_df$variable_name == "Dissolved Oxygen (Field)"] <- "OXYGEN DISSOLVED (FIELD METER)"
-coc_df$variable_name[coc_df$variable_name == "Water Temperature (Field)"] <- "TEMPERATURE WATER"
+coc_df$variable_name[coc_df$variable_name == "Total Suspended Solids (TSS)"] <- "TOTAL SUSPENDED SOLIDS (TSS)"
+# coc_df$variable_name[coc_df$variable_name == "Dissolved Oxygen (Field)"] <- "OXYGEN DISSOLVED (FIELD METER)"
+# coc_df$variable_name[coc_df$variable_name == "Water Temperature (Field)"] <- "TEMPERATURE WATER"
 
 coc_stations <- c(
   "Bow River Upstream of Highwood River",
@@ -104,11 +148,20 @@ coc_df <- coc_df %>%
 
 
 #### AEPA ####
-aepa_df <- read_csv(here("data", "Water Quality-2023-06-12_GovofAlberta.csv")) %>%
+aepa_df <- read_csv(here("data", "Water Quality-2023-06-12_GovofAlberta.csv")) %>% 
   clean_names()
 
-aepa_df$sample_date_time <- mdy_hm(aepa_df$sample_date_time) %>%
+aepa_df$sample_date_time <- mdy_hm(aepa_df$sample_date_time) %>% 
   as_date()
+
+aepa_df2 <- read_csv(here("data", "Water Quality-2023_GovofAB_TSS_TDS_variables.csv")) %>% 
+  clean_names()
+
+aepa_df2$sample_date_time <- mdy_hms(aepa_df2$sample_date_time) %>% 
+  as_date()
+
+aepa_df <- rbind(aepa_df, aepa_df2)
+
 
 aepa_df <- aepa_df %>%
   rename("sample_date" = "sample_date_time")
@@ -133,6 +186,9 @@ aepa_stations <- c(
   "NOSE CREEK, NEAR THE MOUTH-MEMORIAL DRIVE",
   "GHOST RIVER, ABOVE CONFLUENCE WITH WAIPAROUS CREEK"
 )
+
+aepa_df$variable_name[aepa_df$variable_name == 	"PH (FIELD)"] <- "PH"
+aepa_df$variable_name[aepa_df$variable_name == 	"RESIDUE NONFILTERABLE"] <- "TOTAL SUSPENDED SOLIDS (TSS)"
 
 aepa_df <- aepa_df %>%
   filter(station %in% aepa_stations) %>%
@@ -210,9 +266,13 @@ eccc_df <- eccc_df %>%
 eccc_df <- eccc_df %>%
   select(agency, range, station, sample_date, variable_name, measurement_value, measurement_flag, unit_code)
 
+eccc_df <- eccc_df %>% 
+  filter(variable_name != "PH")
+
+
 # change parameter names to AEPA format
 eccc_df$variable_name[eccc_df$variable_name == "TOTAL DISSOLVED SOLIDS (FILTERABLE RESIDUE) (CALCD.)"] <- "TOTAL DISSOLVED SOLIDS (CALCD.)"
-eccc_df$variable_name[eccc_df$variable_name == "PH"] <- "PH (LAB)" # ECCC pH might be field
+eccc_df$variable_name[eccc_df$variable_name == "PH (FIELD)"] <- "PH" # ECCC pH might be field
 eccc_df$variable_name[eccc_df$variable_name == "SPECIFIC CONDUCTANCE"] <- "SPECIFIC CONDUCTANCE (FIELD)"
 eccc_df$variable_name[eccc_df$variable_name == "DISSOLVED NITRITE/NITRATE"] <- "NITROGEN, NITRATE"
 eccc_df$variable_name[eccc_df$variable_name == "NITROGEN TOTAL (CALCD.)"] <- "NITROGEN TOTAL (CALCD.)"
@@ -221,6 +281,7 @@ eccc_df$variable_name[eccc_df$variable_name == "PHOSPHORUS TOTAL"] <- "PHOSPHORU
 eccc_df$variable_name[eccc_df$variable_name == "CARBON TOTAL ORGANIC (CALCD.)"] <- "CARBON TOTAL ORGANIC (TOC)"
 eccc_df$variable_name[eccc_df$variable_name == "OXYGEN DISSOLVED"] <- "OXYGEN DISSOLVED (FIELD METER)"
 eccc_df$variable_name[eccc_df$variable_name == "TEMPERATURE WATER (FIELD)"] <- "TEMPERATURE WATER"
+eccc_df$variable_name[eccc_df$variable_name == "RESIDUE NONFILTERABLE"] <- "TOTAL SUSPENDED SOLIDS (TSS)"
 
 eccc_df <- eccc_df %>%
   filter(station %in% eccc_stations) %>%
@@ -259,10 +320,91 @@ consolidated_df <- consolidated_df %>%
   filter(year > 2001 & year < 2023) %>%
   select(-year)
 
+
+#check for missing data for all stations and parameters
+dat.miss.p <- consolidated_df %>%
+  group_by(station) %>%
+  count(variable_name) %>% 
+  ungroup() %>% 
+  complete(station, variable_name) %>% 
+  View()
+
 write_excel_csv(consolidated_df, here("output", "consolidated_sow_wq.csv"))
 
+  
+#Nadine Taube - Alberta Environment and Protected Areas  
+#### ADD AEPA SAR back in ####
+
+##### ISSUES -----
+#Waiparous seems to be missing from both WQual datasets
+#AEPA data is missing TN
+#ECCC doesn't have NH3
+
+# Load consolidated df
+#consolidated_df <- read_excel("./consolidated_sow_wq.xlsx", sheet="consolidated_sow_wq", guess_max = 1048576)
+consolidated_df.read <- fread("./consolidated_sow_wq.csv")
+str(consolidated_df.read)
+
+# formatting dates and taking out SAR
+consolidated_df2 <- consolidated_df.read %>% 
+  mutate(sample_datetime = as.POSIXct(sample_date, format="%Y/%m/%d %H:%M:%S", tz = "UTC")) %>%
+  mutate(sample_date = as.Date(sample_datetime, format = "%Y-%m-%d", origin = "1899-12-30")) %>%
+  filter(! (variable_name == "SODIUM ADSORPTION RATIO (CALCD.)" & agency == "ALBERTA ENVIRONMENT AND PROTECTED AREAS"))
+
+str(consolidated_df2)
+
+# load AEPA SAR
+df.AEPA <- fread("./Water Quality-2024-04-04_AEPA_wSARcalc.csv")
+stn_lookup <- read_excel("./Flow Data Availability.xlsx", sheet="master", guess_max = 1048576)
+
+intersect(unique(df.AEPA$Station),unique(stn_lookup$StationName_WQdataset)) 
+
+# get AEPA SAR to match consolidated df
+df.SAR.TN <- df.AEPA %>% filter(VariableName %in% c("SODIUM ADSORPTION RATIO (CALCD.)", "NITROGEN TOTAL (CALCD.)")) %>%
+  mutate(sample_datetime = as.POSIXct(SampleDateTime, format="%Y/%m/%d %H:%M:%S", tz = "UTC")) %>%
+  mutate(sample_date = as.Date(SampleDate, format = "%Y-%m-%d", origin = "1899-12-30")) %>%
+  #left_join(stn_lookup %>% select(StationName_WQdataset), 
+  #          by = c("Station" = "StationName_WQdataset")) %>%
+  select(Station, VariableName, sample_datetime, sample_date, MeasurementValue, MeasurementFlag, UnitCode)
+
+df.SAR.TN <- df.SAR.TN %>%
+  add_column(agency = "ALBERTA ENVIRONMENT AND PROTECTED AREAS") %>%
+  add_column(detection_limit = NA) %>%
+  add_column(flow_cms = NA) %>%
+  rename(station = Station, 
+         variable_name = VariableName, 
+         measurement_value = MeasurementValue,
+         measurement_flag = MeasurementFlag,
+         unit_code = UnitCode)
+  
+# create range column
+df.SAR.TN <- df.SAR.TN %>%
+  mutate(range = case_when(
+    station == "GHOST RIVER, ABOVE CONFLUENCE WITH WAIPAROUS CREEK" ~ "Upper Foothills",
+    station == "JUMPINGPOUND CREEK, NEAR MOUTH" ~ "Upper Foothills",
+    station == "BOW RIVER, AT COCHRANE" ~ "Lower Foothills",
+    station == "ELBOW RIVER, AT 9TH AVE BRIDGE" ~ "Lower Foothills",
+    station == "NOSE CREEK, NEAR THE MOUTH-MEMORIAL DRIVE" ~ "Lower Foothills",
+    station == "PINE CREEK, NEAR THE MOUTH" ~ "Lower Foothills",
+    station == "HIGHWOOD RIVER, AT HWY 552" ~ "Lower Foothills",
+    station == "SHEEP RIVER, 1.6 KM D/S OF HWY 2" ~ "Lower Foothills",
+    station == "BOW RIVER, BELOW CARSELAND DAM" ~ "Middle Bow",
+    station == "WEST ARROWWOOD CREEK, D/S OF SYPHON" ~ "Middle Bow",
+    station == "EAST ARROWWOOD CREEK, NEAR THE MOUTH" ~ "Middle Bow",
+    station == "BOW RIVER, AT CLUNY" ~ "Middle Bow",
+    station == "CROWFOOT CREEK, ON HWY 1" ~ "Middle Bow",
+    TRUE ~ "Lower Bow"
+  ))
+
+# bind to consolidated_df2
+str(df.SAR.TN)
+str(consolidated_df2)
+consolidated_df.new <- rbind(consolidated_df2, df.SAR.TN)
+
+fwrite(consolidated_df.new, file="./consolidated_sow_wq_wSARandTN.csv", row.names=FALSE)
+
 #### ADD DL ####
-consolidated_df <- read_excel("./consolidated_sow_wq.xlsx", sheet="consolidated_sow_wq", guess_max = 1048576)
+consolidated_df <- consolidated_df.new
 
 consolidated_df$measurement_value <- as.numeric(consolidated_df$measurement_value)
 consolidated_df$measurement_flag <- as.factor(consolidated_df$measurement_flag)
@@ -313,8 +455,9 @@ df.max.mdl <- mdl.scan.details %>% group_by(agency, variable_name) %>%
 
 write.csv(mdl.scan.details, file="./MDL Scan Details.csv", row.names=FALSE)
 write.csv(df.max.mdl, file="./MAX MDL Scan Details.csv", row.names=FALSE)
+
 # check that the highest main DL makes sense e.g. compare df.max.mdl and mdl.scan.details
-# changed TOC, Cl, NO3, TDP, SAR for AEPA and NH3 for CoC
+# changed TOC, Cl, NO3, TDP, TSS for AEPA and NH3 for CoC
 
 # read final maxDL back in
 max.mdl = read.csv("./MAX MDL Scan Details.csv") 
@@ -323,12 +466,12 @@ max.mdl = read.csv("./MAX MDL Scan Details.csv")
 df.mdl = NULL
 
 for (a in levels(factor(max.mdl$agency))){
-  max.mdl.temp = max.mdl %>% filter(agency == a)
+  max.mdl.temp = max.mdl %>% filter(agency == a) #max.mdl only has the variables that have values BDL
   for (i in levels(factor(max.mdl.temp$variable_name))){
     max.mdl.f = max.mdl.temp %>% filter(variable_name == i) 
     fdf = consolidated_df %>% filter(agency == a, variable_name == i) %>%
       mutate(measurement_flag2 = ifelse(measurement_value <= max.mdl.f$maxDL, T, F)) %>%
-      mutate(measurement_value2 = ifelse(measurement_flag2 == T, max.mdl.f$maxDL, measurement_value)) %>%
+      mutate(measurement_maxDLsub = ifelse(measurement_flag2 == T, max.mdl.f$maxDL, measurement_value)) %>%
       mutate(measurement_flag2 = ifelse(measurement_value <= max.mdl.f$maxDL, T, cen_logic)) 
     df.mdl = rbind(df.mdl, fdf)
   }
@@ -337,33 +480,33 @@ for (a in levels(factor(max.mdl$agency))){
 # put the data back together 
 anti.join <- anti_join(consolidated_df, df.mdl) %>% #return all rows from original without a match in maxDL one
   mutate(measurement_flag2 = cen_logic,
-         measurement_value2 = measurement_value)
+         measurement_maxDLsub = measurement_value)
 consolidated_df_maxDL <- rbind(anti.join, df.mdl)
 
 # summarise again to see how perc.BDL changes
 overview2 <- consolidated_df_maxDL %>% group_by(agency, variable_name) %>%
   summarise(min.date = min(sample_date),
             max.date = max(sample_date),
-            count.values = sum(!is.na(measurement_value2)),
+            count.values = sum(!is.na(measurement_maxDLsub)),
             count.LFLAG = sum(cen_logic),
-            count.LFLAG2 = sum(measurement_flag2),
+            count.LFLAG2 = sum(measurement_flag2), #after substituting maxDL
             perc.BDL = count.LFLAG/count.values*100,
-            perc.BDL2 = count.LFLAG2/count.values*100,
+            perc.BDL2 = count.LFLAG2/count.values*100, #after substituting maxDL
             list.DLs = list(unique(measurement_value[cen_logic == TRUE])),
-            Min  = quantile(measurement_value2, probs = 0, na.rm = TRUE),
-            p10 = quantile(measurement_value2, probs = 0.10, na.rm = TRUE),
-            p25 = quantile(measurement_value2, probs = 0.25, na.rm = TRUE),
-            Mean = mean(measurement_value2, na.rm = TRUE),
-            Median = median(measurement_value2, na.rm = TRUE),
-            p75 = quantile(measurement_value2, probs = 0.75, na.rm = TRUE),
-            p90 = quantile(measurement_value2, probs = 0.90, na.rm = TRUE),
-            Max  = quantile(measurement_value2, probs = 1, na.rm = TRUE),
-            StDev  = sd(measurement_value2, na.rm = TRUE))
+            Min  = quantile(measurement_maxDLsub, probs = 0, na.rm = TRUE),
+            p10 = quantile(measurement_maxDLsub, probs = 0.10, na.rm = TRUE),
+            p25 = quantile(measurement_maxDLsub, probs = 0.25, na.rm = TRUE),
+            Mean = mean(measurement_maxDLsub, na.rm = TRUE),
+            Median = median(measurement_maxDLsub, na.rm = TRUE),
+            p75 = quantile(measurement_maxDLsub, probs = 0.75, na.rm = TRUE),
+            p90 = quantile(measurement_maxDLsub, probs = 0.90, na.rm = TRUE),
+            Max  = quantile(measurement_maxDLsub, probs = 1, na.rm = TRUE),
+            StDev  = sd(measurement_maxDLsub, na.rm = TRUE))
 
 #### ADD FLOW ####
 
 stn_lookup <- read_excel("./Flow Data Availability.xlsx", sheet="master", guess_max = 1048576)
-dfw.AEPA_flow <- read_excel("./AEPA_SWQMF_Flow_BOW_1999-2022.xlsx", sheet="flow", guess_max = 1048576) #Cochran, Carseland, Cluny
+dfw.AEPA_flow <- read_excel("./AEPA_SWQMF_Flow_BOW_1999-2022.xlsx", sheet="flow", guess_max = 1048576) #Cochrane, Carseland, Cluny
 # PC and NC
 df.PCNC.raw <- fread("./DATA_COC_PINE_NOSE_FLOW.csv")
 # Big Hill Creek (BHC)
@@ -383,8 +526,8 @@ SeasonalFilter  <- c('OpenWater', 'Winter')
 
 # from Flow Data Availability.xlsx:
 # need 05BE004,05BA001,05BH004,05BN012,05BM008,05BJ001,05BK001,05BG010,05BL024,05BH015,05BN006,05BL012,05BN002,05BM014,05BG006
-# Bow u/s Highwood (HR) -> WQ stations where flow will be calculated from other flow stations
-# Pine Creek and NOse Creek from City, Big Hill Creek from Masaki
+# Bow u/s Highwood (BRHR) -> WQ station where flow will be calculated from other flow stations
+# Pine Creek and Nose Creek from City, Big Hill Creek from Masaki
 
 # select analysis gauges from HYDAT
 gauges_WSC <- c("05BE004","05BA001","05BH004","05BN012","05BM008","05BJ001","05BK001","05BG010","05BL024",
@@ -481,26 +624,30 @@ dfw.dailyQ.complete <- dfw.dailyQ %>% left_join(dfw.AEPA_flow %>% select(-c("uni
 
 # calculate missing stations according to Flow Data Availability.xlsx i.e. Bow u/s of Highwood
 dfw.dailyQ.complete <- dfw.dailyQ.complete %>% 
-  mutate(BRHR = `05BM002` - `05BL024`)
+  mutate(BRHR = ifelse(is.na(`05BM002`) | is.na(`05BL024`), NA, `05BM002` - `05BL024`))
 
 # get Nose Creek and Pine Creek and Big Hill Creek ready
 df.PCNC <- df.PCNC.raw %>%
-  mutate(SAMPLE_DATETIME = as.POSIXct(date, format = "%m/%d/%y %H:%M")) %>%
-  mutate(SAMPLE_DATE = as.Date(SAMPLE_DATETIME, format = "%Y-%m-%d", origin = "1899-12-30"))
+  mutate(SAMPLE_DATETIME = as.POSIXct(date, format = "%Y/%m/%d %H:%M:%S")) %>%
+  mutate(SAMPLE_DATE = as.Date(date, format = "%Y/%m/%d")) #, origin = "1899-12-30"
 
 df.PCNC.dailyQ <- df.PCNC %>%
   group_by(site, SAMPLE_DATE) %>%
   summarise(Value = mean(flow_cms), .groups = 'drop') %>%
   mutate(Flow_StationNumber = ifelse(site == "PC2A", "PC", "NC")) %>%
   rename('Date' = 'SAMPLE_DATE') %>%
+  filter(!is.na(Value)) %>%
   select(Date, Value, Flow_StationNumber)
 
 df.BHC.dailyQ <- df.BHC.raw %>% 
   rename("Value" = `Q (m3/s)`) %>%
+  filter(!is.na(Value)) %>%
   mutate(Flow_StationNumber = "BHC")
 
+#checkna <- df.BHC.raw %>% filter(is.na(Date))
+
 ##### consolidate flow ####
-# turn dfw.dailyQ.complete long (station number col needs to be called Flow_StationNumber)
+# turn dfw.dailyQ.complete long (station number col needs to be called Flow_StationNumber to match with lookup table)
 str(dfw.dailyQ.complete)
 colnames(dfw.dailyQ.complete)
 df.dailyQ.complete <- dfw.dailyQ.complete %>%
@@ -516,9 +663,10 @@ colnames(df.PCNC.dailyQ)
 df.dailyQ.join <- rbind(df.dailyQ.complete, df.BHC.dailyQ, df.PCNC.dailyQ)
 
 ##### MERGE WQ and FLOW DATAFRAMES --------------
-unique(df.WQ$STATION_NO)
-str(stn_lookup)
 
+# merge station lookup table to water quality and flow df
+str(stn_lookup)
+str(df.dailyQ.join)
 dfl.flow <- df.dailyQ.join %>% 
   left_join(stn_lookup %>%
               select(StationName_WQdataset, WQTC_StationName, Flow_StationNumber, Flow_StationName),
@@ -529,13 +677,17 @@ df.missingWQstn <- dfl.flow %>% filter(is.na(StationName_WQdataset)) #checking i
 str(consolidated_df_maxDL)
 merge.df1 <- consolidated_df_maxDL %>% 
   left_join(stn_lookup %>%
-              select(StationName_WQdataset, WQTC_StationName, Flow_StationNumber, Flow_StationName),
+              select(StationName_WQdataset, Flow_StationNumber, Flow_StationName, WQTC_StationName),
             by = c("station" = "StationName_WQdataset"))
+
+df.missingflowstn <- merge.df1 %>% filter(is.na(Flow_StationNumber)) 
+unique(df.missingflowstn$station)
+unique(df.missingflowstn$WQTC_StationName)
 
 # merging daily flows to WQ
 month_labels <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
-merge.df2 <- merge.df1 %>% left_join(dfl.flow, by = c("Flow_StationNumber", "sample_date" = "Date")) %>%
+merge.df2 <- merge.df1 %>% left_join(dfl.flow, by = c("Flow_StationNumber", "Flow_StationName" , "sample_date" = "Date", "WQTC_StationName")) %>%
   rename(daily.flow.cms = Value) %>%
   mutate('YEAR' = year(sample_date)) %>% 
   mutate("MONTH_YEAR" = as.yearmon(sample_date, "%m-%Y")) %>%
@@ -545,6 +697,7 @@ merge.df2 <- merge.df1 %>% left_join(dfl.flow, by = c("Flow_StationNumber", "sam
 
 consolidated_df_maxDL_flow <- merge.df2
 fwrite(consolidated_df_maxDL_flow, file = "./consolidated_data-maxDL-flow.csv")
+fwrite(dfl.flow, file = "./daily flows.csv")
 
 # FINAL DF CHECKS AND SUMMARIES -----------------
 #find WQ sites that have missing flows
@@ -566,27 +719,54 @@ write.xlsx(missing.dailyQ.stns, "./missing dailyQs.xlsx")
 # Cushing Bridge, Coal Creek, East Arrowwood don't have any flow data
 # Continuous flow: Canmore, Bearspaw, Carseland, Cluny, Cochrane, Ronalane, Elbow, Ghost, Highwood, Bow u/s Highwood, Jumpingpound, Sheep, Waiparous
 # Seasonal flow: Lake Louise, Big Hill Creek (until 2020), Crowfoot Creek, Fish Creek, New West Coulee, Nose Creek, Pine Creek, TMCreek, West Arrowwood
+# Big Hill Creek only has 2022 WQual data and flow data only goes to 2020
 
-overview3 <- consolidated_df_maxDL_flow %>% group_by(station, variable_name) %>%
+overview3 <- consolidated_df_maxDL_flow %>% group_by(station, WQTC_StationName, variable_name) %>%
   summarise(count.samples = length(measurement_value),
             min.date = min(sample_date),
             max.date = max(sample_date),
-            count.values = sum(!is.na(measurement_value)),
-            count.LFLAG = sum(measurement_flag %in% c("L", "<")),
-            perc.BDL = count.LFLAG/count.values*100,
+            count.values = sum(!is.na(measurement_maxDLsub)),
+            count.LFLAG = sum(cen_logic),
+            count.LFLAG2 = sum(measurement_flag2), #after substituting maxDL
+            perc.BDL = count.LFLAG/sum(!is.na(measurement_value))*100,
+            perc.BDL2 = count.LFLAG2/count.values*100,
             list.DLs = list(unique(measurement_value[measurement_flag %in% c("L", "<")])),
             count.years = length(unique(year(sample_date))),
             count.months = length(month(sample_date)),
             count.LFLAG2 = sum(measurement_flag2),
-            Min  = quantile(measurement_value, probs = 0, na.rm = TRUE),
-            p10 = quantile(measurement_value, probs = 0.10, na.rm = TRUE),
-            p25 = quantile(measurement_value, probs = 0.25, na.rm = TRUE),
-            Mean = mean(measurement_value, na.rm = TRUE),
+            Min  = quantile(measurement_maxDLsub, probs = 0, na.rm = TRUE),
+            p10 = quantile(measurement_maxDLsub, probs = 0.10, na.rm = TRUE),
+            p25 = quantile(measurement_maxDLsub, probs = 0.25, na.rm = TRUE),
+            Mean = mean(measurement_maxDLsub, na.rm = TRUE),
             Mean.flow = mean(daily.flow.cms, na.rm = T),
-            Median = median(measurement_value, na.rm = TRUE),
+            Median = median(measurement_maxDLsub, na.rm = TRUE),
             Median.flow = median(daily.flow.cms, na.rm = TRUE),
-            p75 = quantile(measurement_value, probs = 0.75, na.rm = TRUE),
-            p90 = quantile(measurement_value, probs = 0.90, na.rm = TRUE),
-            Max  = quantile(measurement_value, probs = 1, na.rm = TRUE),
-            StDev  = sd(measurement_value, na.rm = TRUE))
+            p75 = quantile(measurement_maxDLsub, probs = 0.75, na.rm = TRUE),
+            p90 = quantile(measurement_maxDLsub, probs = 0.90, na.rm = TRUE),
+            Max  = quantile(measurement_maxDLsub, probs = 1, na.rm = TRUE),
+            StDev  = sd(measurement_maxDLsub, na.rm = TRUE))
 write.xlsx(overview3, "./summary overall.xlsx")
+
+overview4 <- consolidated_df_maxDL_flow %>% group_by(station, WQTC_StationName, variable_name, YEAR) %>%
+  summarise(min.date = min(sample_date),
+            max.date = max(sample_date),
+            count.values = sum(!is.na(measurement_maxDLsub)),
+            count.LFLAG = sum(cen_logic),
+            count.LFLAG2 = sum(measurement_flag2), #after substituting maxDL
+            perc.BDL = count.LFLAG/sum(!is.na(measurement_value))*100,
+            perc.BDL2 = count.LFLAG2/count.values*100, #after substituting maxDL
+            list.DLs = list(unique(measurement_value[measurement_flag %in% c("L", "<")])),
+            count.years = length(unique(year(sample_date))),
+            count.months = length(month(sample_date)),
+            Min  = quantile(measurement_maxDLsub, probs = 0, na.rm = TRUE),
+            p10 = quantile(measurement_maxDLsub, probs = 0.10, na.rm = TRUE),
+            p25 = quantile(measurement_maxDLsub, probs = 0.25, na.rm = TRUE),
+            Mean = mean(measurement_maxDLsub, na.rm = TRUE),
+            Mean.flow = mean(daily.flow.cms, na.rm = T),
+            Median = median(measurement_maxDLsub, na.rm = TRUE),
+            Median.flow = median(daily.flow.cms, na.rm = TRUE),
+            p75 = quantile(measurement_maxDLsub, probs = 0.75, na.rm = TRUE),
+            p90 = quantile(measurement_maxDLsub, probs = 0.90, na.rm = TRUE),
+            Max  = quantile(measurement_maxDLsub, probs = 1, na.rm = TRUE),
+            StDev  = sd(measurement_maxDLsub, na.rm = TRUE))
+write.xlsx(overview4, "./summary annual.xlsx")
