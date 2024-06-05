@@ -11,6 +11,8 @@ library(openxlsx)
 library(data.table)
 library(zoo)
 library(readxl)
+library(duckdb)
+source("constants.R")
 
 # for Nadine
 # wd ="C:/Users/nadine.taube/OneDrive - Government of Alberta/Documents/BRBC/State of the watershed/Analysis"  
@@ -322,12 +324,12 @@ consolidated_df <- consolidated_df %>%
 
 
 #check for missing data for all stations and parameters
-dat.miss.p <- consolidated_df %>%
-  group_by(station) %>%
-  count(variable_name) %>% 
-  ungroup() %>% 
-  complete(station, variable_name) %>% 
-  View()
+# dat.miss.p <- consolidated_df %>%
+#   group_by(station) %>%
+#   count(variable_name) %>% 
+#   ungroup() %>% 
+#   complete(station, variable_name) %>% 
+#   View()
 
 write_excel_csv(consolidated_df, here("output", "consolidated_sow_wq.csv"))
 
@@ -342,7 +344,7 @@ write_excel_csv(consolidated_df, here("output", "consolidated_sow_wq.csv"))
 
 # Load consolidated df
 #consolidated_df <- read_excel("./consolidated_sow_wq.xlsx", sheet="consolidated_sow_wq", guess_max = 1048576)
-consolidated_df.read <- fread("./consolidated_sow_wq.csv")
+consolidated_df.read <- fread(here("output", "consolidated_sow_wq.csv"))
 str(consolidated_df.read)
 
 # formatting dates and taking out SAR
@@ -354,8 +356,8 @@ consolidated_df2 <- consolidated_df.read %>%
 str(consolidated_df2)
 
 # load AEPA SAR
-df.AEPA <- fread("./Water Quality-2024-04-04_AEPA_wSARcalc.csv")
-stn_lookup <- read_excel("./Flow Data Availability.xlsx", sheet="master", guess_max = 1048576)
+df.AEPA <- fread(here("data", "Water Quality-2024-04-04_AEPA_wSARcalc.csv"))
+stn_lookup <- read_excel(here("data", "Flow Data Availability.xlsx"), sheet="master", guess_max = 1048576)
 
 intersect(unique(df.AEPA$Station),unique(stn_lookup$StationName_WQdataset)) 
 
@@ -401,7 +403,7 @@ str(df.SAR.TN)
 str(consolidated_df2)
 consolidated_df.new <- rbind(consolidated_df2, df.SAR.TN)
 
-fwrite(consolidated_df.new, file="./consolidated_sow_wq_wSARandTN.csv", row.names=FALSE)
+fwrite(consolidated_df.new, file=here("output", "./consolidated_sow_wq_wSARandTN.csv"), row.names=FALSE)
 
 #### ADD DL ####
 consolidated_df <- consolidated_df.new
@@ -453,14 +455,14 @@ mdl.scan.details = mdl.scan %>%
 df.max.mdl <- mdl.scan.details %>% group_by(agency, variable_name) %>%
   summarise(maxDL = max(measurement_value), .groups = 'drop')  
 
-write.csv(mdl.scan.details, file="./MDL Scan Details.csv", row.names=FALSE)
-write.csv(df.max.mdl, file="./MAX MDL Scan Details.csv", row.names=FALSE)
+write.csv(mdl.scan.details, file=here("output", "./MDL Scan Details.csv"), row.names=FALSE)
+write.csv(df.max.mdl, file=here("output", "./MAX MDL Scan Details.csv"), row.names=FALSE)
 
 # check that the highest main DL makes sense e.g. compare df.max.mdl and mdl.scan.details
 # changed TOC, Cl, NO3, TDP, TSS for AEPA and NH3 for CoC
 
 # read final maxDL back in
-max.mdl = read.csv("./MAX MDL Scan Details.csv") 
+max.mdl = read.csv(here("output", "./MAX MDL Scan Details.csv"))
 
 # Substitute to Max DL
 df.mdl = NULL
@@ -505,12 +507,12 @@ overview2 <- consolidated_df_maxDL %>% group_by(agency, variable_name) %>%
 
 #### ADD FLOW ####
 
-stn_lookup <- read_excel("./Flow Data Availability.xlsx", sheet="master", guess_max = 1048576)
-dfw.AEPA_flow <- read_excel("./AEPA_SWQMF_Flow_BOW_1999-2022.xlsx", sheet="flow", guess_max = 1048576) #Cochrane, Carseland, Cluny
+# stn_lookup <- read_excel("./Flow Data Availability.xlsx", sheet="master", guess_max = 1048576)
+dfw.AEPA_flow <- read_excel(here("data", "AEPA_SWQMF_Flow_BOW_1999-2022.xlsx"), sheet="flow", guess_max = 1048576) #Cochrane, Carseland, Cluny
 # PC and NC
-df.PCNC.raw <- fread("./DATA_COC_PINE_NOSE_FLOW.csv")
+df.PCNC.raw <- fread(here("data", "DATA_COC_PINE_NOSE_FLOW.csv"))
 # Big Hill Creek (BHC)
-df.BHC.raw <- read_excel("./DATA_Masaki, Big_Hill_Creek_Q_2011-2020.xlsx", sheet="data", range = cell_cols("A:B"), guess_max = 1048576)
+df.BHC.raw <- read_excel(here("data", "DATA_Masaki, Big_Hill_Creek_Q_2011-2020.xlsx"), sheet="data", range = cell_cols("A:B"), guess_max = 1048576)
 
 # identify date-related inputs 
 startAnalysis   <- '2002/01/01'  ## start of common period
@@ -608,8 +610,8 @@ AnnualStats_dailyQ_hydat <- dfl.HYDAT %>%
     Mo_to = max(month(Date)[!is.na(Value)])) %>%
   mutate(SeasonalFlag = ifelse(Mo_from == 1 & Mo_to == 12, "Continuous", "Seasonal"))
 
-fwrite(OverallStats_dailyQ_hydat, file = "./overall_summary-hydat.csv")
-fwrite(AnnualStats_dailyQ_hydat, file = "./annual_summary-hydat.csv")
+fwrite(OverallStats_dailyQ_hydat, file = here("output", "./overall_summary-hydat.csv"))
+fwrite(AnnualStats_dailyQ_hydat, file = here("output", "./annual_summary-hydat.csv"))
 
 ##### CALCULATE missing Q stations ----- 
 # turn hydat wide
@@ -696,8 +698,8 @@ merge.df2 <- merge.df1 %>% left_join(dfl.flow, by = c("Flow_StationNumber", "Flo
          month_abb = factor(month.abb[month(sample_date)], month_labels))
 
 consolidated_df_maxDL_flow <- merge.df2
-fwrite(consolidated_df_maxDL_flow, file = "./consolidated_data-maxDL-flow.csv")
-fwrite(dfl.flow, file = "./daily flows.csv")
+fwrite(consolidated_df_maxDL_flow, file = here("output", CONSOLIDATED_DATA_FILE))
+fwrite(dfl.flow, file = here("output", DAILY_FLOW_FILE))
 
 # FINAL DF CHECKS AND SUMMARIES -----------------
 #find WQ sites that have missing flows
@@ -714,7 +716,7 @@ missing.dailyQ.stns <- missing.dailyQ %>%
   summarize_all(paste, collapse=",") %>% 
   select(c(1:2,6, 23))
 
-write.xlsx(missing.dailyQ.stns, "./missing dailyQs.xlsx")
+write.xlsx(missing.dailyQ.stns, here("output", "./missing dailyQs.xlsx"))
 # only seasonal stations in the winter season should be missing, late 2021 and 2022 are often missing flow data
 # Cushing Bridge, Coal Creek, East Arrowwood don't have any flow data
 # Continuous flow: Canmore, Bearspaw, Carseland, Cluny, Cochrane, Ronalane, Elbow, Ghost, Highwood, Bow u/s Highwood, Jumpingpound, Sheep, Waiparous
@@ -745,7 +747,7 @@ overview3 <- consolidated_df_maxDL_flow %>% group_by(station, WQTC_StationName, 
             p90 = quantile(measurement_maxDLsub, probs = 0.90, na.rm = TRUE),
             Max  = quantile(measurement_maxDLsub, probs = 1, na.rm = TRUE),
             StDev  = sd(measurement_maxDLsub, na.rm = TRUE))
-write.xlsx(overview3, "./summary overall.xlsx")
+write.xlsx(overview3, here("output", "./summary overall.xlsx"))
 
 overview4 <- consolidated_df_maxDL_flow %>% group_by(station, WQTC_StationName, variable_name, YEAR) %>%
   summarise(min.date = min(sample_date),
@@ -769,4 +771,4 @@ overview4 <- consolidated_df_maxDL_flow %>% group_by(station, WQTC_StationName, 
             p90 = quantile(measurement_maxDLsub, probs = 0.90, na.rm = TRUE),
             Max  = quantile(measurement_maxDLsub, probs = 1, na.rm = TRUE),
             StDev  = sd(measurement_maxDLsub, na.rm = TRUE))
-write.xlsx(overview4, "./summary annual.xlsx")
+write.xlsx(overview4, here("output", "./summary annual.xlsx"))
