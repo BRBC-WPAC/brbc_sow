@@ -14,6 +14,8 @@ library(readxl)
 library(duckdb)
 source("constants.R")
 
+dir.create("output", showWarnings = FALSE)
+
 # for Nadine
 # wd ="C:/Users/nadine.taube/OneDrive - Government of Alberta/Documents/BRBC/State of the watershed/Analysis"  
 # setwd(wd)
