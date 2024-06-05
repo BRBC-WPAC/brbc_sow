@@ -265,7 +265,7 @@ get_min_max <- function() {
 #' Image is saved to the output/figures directory.
 #' @param station The station to plot
 #' @param variable The variable to plot
-#' @param log10 Whether to log10 transform the y-axis
+#' @param log10 Whether to use log10 scale
 #' @return The filename of the generated image
 concentration_img <- function(station, variable, log10 = TRUE) {
   captions <- list()
@@ -327,34 +327,18 @@ concentration_img <- function(station, variable, log10 = TRUE) {
         )
       )
     if (log10) {
-      # If variable is in NO_LOG_TRANSFORM, plot raw data
-      plot_raw <- variable %in% NO_LOG_TRANSFORM # nolint: object_usage_linter
+      # If variable is in NO_LOG_SCALE, plot raw data
+      plot_raw <- variable %in% NO_LOG_SCALE # nolint: object_usage_linter
       if (plot_raw) {
         log10 <- FALSE
         caption <- paste(
           "Note: ",
           variable,
-          " is intentionally not log-transformed.",
+          " is intentionally not shown on log10 scale",
           sep = ""
         )
         captions <- c(captions, caption)
       }
-    }
-
-    # are there any zero-values in the data?
-    any_non_zero <- nrow(
-      dplyr::filter(the_df, .data$measurement_value == 0)
-    ) > 0
-    if (log10 && any_non_zero) {
-      warning_message <- paste(
-        "Can't log-transform zero values: infinities will be squashed for ",
-        station,
-        "and",
-        variable
-      )
-      warning(warning_message)
-      caption <- "Note: Some log-transformed values (logs10(0)) have been modified in order to fit into this scale." # nolint: line_length_linter.
-      captions <- c(captions, caption)
     }
 
     if (log10) {
@@ -363,7 +347,7 @@ concentration_img <- function(station, variable, log10 = TRUE) {
           oob = scales::squish_infinite
         ) +
         labs(
-          subtitle = "Water quality percentile comparisons : log-transformed",
+          subtitle = "Water quality percentile comparisons : log10 scale",
           y = paste("log10(", variable, ")", sep = "")
         )
     } else {

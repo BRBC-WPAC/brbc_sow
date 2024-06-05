@@ -9,10 +9,10 @@ DUCKDB_FILE <- "db.duckdb"
 CUTOFF_YEAR <- 2022
 PERC_BINS <- c(0, 0.1, 0.25, 0.75, 0.90, 1)
 
-# The names of the variables that we do not want to show log-transformed.
+# The names of the variables that we do not want to show on log10 scale
 # When rendering these, they will use non-transformed data and the plit
-# will include a caption explaining why they're not log-transformed.
-NO_LOG_TRANSFORM <- c("PH", "TURBIDITY", "ESCHERICHIA COLI")
+# will include a caption explaining why they're not on log10 scale.
+NO_LOG_SCALE <- c("PH", "TURBIDITY", "ESCHERICHIA COLI")
 
 ## Image generation constants ####
 # Some defaults for image generation. At 12x8@300dpi, each image is usually
