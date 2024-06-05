@@ -1,13 +1,14 @@
 FROM rocker/verse:4
 
 ENV TZ=America/Edmonton
-ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /work
 COPY . .
 
-RUN apt-get update -qq
-RUN apt-get install --no-install-recommends -y \
+RUN DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes \
+    apt-get update -qq
+RUN DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes \
+    apt-get install --no-install-recommends -y \
     gpg \
     apt-utils \
     ca-certificates \
