@@ -25,7 +25,7 @@ It also downloads the HYDAT file, which can take some time.
 ### Using a graphical docker application
 
 Your installation of docker may provide a GUI for starting up a container.
-If will be using a GUI tool, please refer to its documentation for building and running the container.
+If you will be using a GUI tool, please refer to its documentation for building and running the container.
 The container definition is in the `docker-compose.yaml` file.
 
 ### Using the bash command-line
