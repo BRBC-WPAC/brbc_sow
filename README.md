@@ -14,7 +14,7 @@ Refer to Docker's [installation guidance](https://www.docker.com/get-started/) f
 Once the project is set up and running (see below for instructions), locally-accessible instances of RStudio and Visual Studio Code will be running.
 
 - [RStudio at localhost:18787](http://localhost:18787)
-- [Visual Studio Code at localhost:25005](http://localhost:25005)
+- [Visual Studio Code at localhost:25005](http://localhost:25005/?folder=/home/rstudio/workspace/BRBC_SOW)
 
 ## Running the docker container
 
