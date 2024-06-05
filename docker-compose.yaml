@@ -1,0 +1,26 @@
+version: '3'
+services:
+  rstudio:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    ports:
+      - 18787:8787
+      - 25005:28080
+    environment:
+      - PASSWORD=water4ever
+      - USER=rstudio
+      - ROOT=FALSE
+      - "TZ=America/Edmonton"
+    volumes:
+      - ./.rstudio_config:/home/rstudio/.config/rstudio
+      - ./.rstudio_local:/home/rstudio/.local/share/rstudio
+      - ./workspace:/home/rstudio/workspace
+      - ./R:/home/rstudio/workspace/BRBC_SOW
+      - ./data:/home/rstudio/workspace/BRBC_SOW/data
+    networks:
+      - brbc_net
+    command: /work/entrypoint.sh
+networks:
+  brbc_net:
+    external: true
