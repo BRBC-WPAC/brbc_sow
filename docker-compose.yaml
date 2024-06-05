@@ -18,9 +18,4 @@ services:
       - ./workspace:/home/rstudio/workspace
       - ./R:/home/rstudio/workspace/BRBC_SOW
       - ./data:/home/rstudio/workspace/BRBC_SOW/data
-    networks:
-      - brbc_net
     command: /work/entrypoint.sh
-networks:
-  brbc_net:
-    external: true
