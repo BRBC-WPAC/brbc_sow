@@ -182,7 +182,6 @@ get_observation_df <- function(station, variable) {
       and variable_name = ?
     "
   the_df <- get_df(query, list(station, variable))
-
   return(the_df)
 }
 
@@ -313,18 +312,11 @@ concentration_img <- function(station, variable, log10 = TRUE) {
       ) +
       geom_boxplot(show.legend = TRUE) +
       scale_fill_manual(
-        name = "Median vs.\nHistorical\nPercentiles",
-        values = c("#1f26f5", "#55d7da", "#1df129", "#e9ad29", "#b34044", NULL),
+        name = "Percentile",
+        values = PERC_COLOURS, # nolint: object_usage_linter
         drop = FALSE, # need this argument to keep unused categories
-        na.value = "grey50",
-        labels = c(
-          "<10th",
-          "10th - 24th",
-          "25th - 75th",
-          "76th - 90th",
-          ">90th",
-          "Not ranked"
-        )
+        na.value = NA_COLOUR, # nolint: object_usage_linter
+        labels = PERC_LABELS # nolint: object_usage_linter
       )
     if (log10) {
       # If variable is in NO_LOG_SCALE, plot raw data
@@ -347,13 +339,13 @@ concentration_img <- function(station, variable, log10 = TRUE) {
           oob = scales::squish_infinite
         ) +
         labs(
-          subtitle = "Water quality percentile comparisons : log10 scale",
+          subtitle = "Water Quality Percentile Comparisons : log10 scale",
           y = paste("log10(", variable, ")", sep = "")
         )
     } else {
       the_plot <- the_plot +
         labs(
-          subtitle = "Water quality percentile comparisons : as measured",
+          subtitle = "Water Quality Percentile Comparisons : as measured",
           y = paste(variable, " (", unit, ")", sep = "")
         )
     }
@@ -508,18 +500,11 @@ flux_img <- function(station, variable) {
       ) +
       geom_boxplot(show.legend = TRUE) +
       scale_fill_manual(
-        name = "Median vs.\nHistorical\nPercentiles",
-        values = c("#1f26f5", "#55d7da", "#1df129", "#e9ad29", "#b34044", NULL),
+        name = "Percentile",
+        values = PERC_COLOURS, # nolint: object_usage_linter
         drop = FALSE, # need this argument to keep unused categories
-        na.value = "grey50",
-        labels = c(
-          "<10th",
-          "10th - 24th",
-          "25th - 75th",
-          "76th - 90th",
-          ">90th",
-          "Not ranked"
-        )
+        na.value = NA_COLOUR, # nolint: object_usage_linter
+        labels = PERC_LABELS # nolint: object_usage_linter
       ) +
       scale_y_log10(
         oob = scales::squish_infinite

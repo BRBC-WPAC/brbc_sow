@@ -5,7 +5,7 @@ CONSOLIDATED_DATA_FILE <- "consolidated_data-maxDL-flow.csv"
 DAILY_FLOW_FILE <- "daily flows.csv"
 DUCKDB_FILE <- "db.duckdb"
 
-## Data processing constants ####
+## Data processing ####
 CUTOFF_YEAR <- 2022
 PERC_BINS <- c(0, 0.1, 0.25, 0.75, 0.90, 1)
 
@@ -14,7 +14,27 @@ PERC_BINS <- c(0, 0.1, 0.25, 0.75, 0.90, 1)
 # will include a caption explaining why they're not on log10 scale.
 NO_LOG_SCALE <- c("PH", "TURBIDITY", "ESCHERICHIA COLI")
 
-## Image generation constants ####
+## Plot appearance ####
+NA_COLOUR <- "grey50"
+PERC_COLOURS <- c(
+  "#00A6C8",
+  "#ACE2E5",
+  "#95C087",
+  "#D1B361",
+  "#BA3C3C",
+  NA
+)
+PERC_LABELS <- c(
+  "<10th",
+  "10th - 24th",
+  "25th - 75th",
+  "76th - 90th",
+  ">90th",
+  "Not ranked"
+)
+
+
+## Image generation ####
 # Some defaults for image generation. At 12x8@300dpi, each image is usually
 # somewhere around 700KB, meaning that the generated images should take up
 # around a gigabyte in total.
