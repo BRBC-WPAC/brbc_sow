@@ -44,7 +44,7 @@ scatter_filenames <- future_map(the_list, function(the_pair) {
 
 ## Flow over time ####
 stations_with_flow <- get_stations(with_flow = TRUE)
-flow_filenames <- map(stations_with_flow, function(station) {
+flow_filenames <- future_map(stations_with_flow, function(station) {
   flow_img(
     station
   )
@@ -52,7 +52,7 @@ flow_filenames <- map(stations_with_flow, function(station) {
 
 ## Flux bucketed by year ####
 variables_concentration <- get_variables(only_concentrations = TRUE)
-the_list <- map(stations_with_flow, function(station) {
+the_list <- future_map(stations_with_flow, function(station) {
   map(variables_concentration, function(variable) {
     list(station = station, variable = variable)
   })
