@@ -102,20 +102,26 @@ set_percentile_bin <- function(the_df, cutoff_year) {
 #' @examples
 #'
 get_flux_df <- function(the_df) {
+  # copy and drop NA values for daily flow
+  flow_df <- data.frame(the_df) %>% filter(!is.na(.data$daily_flow_cms))
+  # warn if NAs were dropped
+  if (nrow(the_df) != nrow(flow_df)) {
+    warning("NA values were dropped for flux calculation")
+  }
   if (nrow(the_df) > 0) {
     # The unit_code must be "mg/L".
-    unit_code <- the_df$unit_code[1]
+    unit_code <- flow_df$unit_code[1]
     if (unit_code != "mg/L") {
       stop("Unit code must be 'mg/L' for flux calculation")
     }
-    the_df <- data.frame(the_df) # make a copy, don't modify the original
-    the_df <- the_df %>%
+    flow_df <- flow_df %>%
       mutate(
         measurement_value = (.data$measurement_value * 0.001) * (.data$daily_flow_cms * 86400), # nolint: line_length_linter.
         unit_code = "mg/d"
       )
-    return(the_df)
+    return(flow_df)
   }
+  # leave this as undefined if no data
 }
 
 # Data retrieval functions ####
