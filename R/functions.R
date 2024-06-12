@@ -311,7 +311,7 @@ concentration_img <- function(station, variable, log10 = TRUE) {
           fill = .data$colour_cut
         )
       ) +
-      geom_boxplot() +
+      geom_boxplot(show.legend = TRUE) +
       scale_fill_manual(
         name = "Median vs.\nHistorical\nPercentiles",
         values = c("#1f26f5", "#55d7da", "#1df129", "#e9ad29", "#b34044", NULL),
@@ -506,7 +506,7 @@ flux_img <- function(station, variable) {
           fill = .data$colour_cut
         )
       ) +
-      geom_boxplot() +
+      geom_boxplot(show.legend = TRUE) +
       scale_fill_manual(
         name = "Median vs.\nHistorical\nPercentiles",
         values = c("#1f26f5", "#55d7da", "#1df129", "#e9ad29", "#b34044", NULL),
