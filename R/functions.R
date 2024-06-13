@@ -171,6 +171,18 @@ get_variables <- function(only_concentrations = FALSE) {
 #' Get observation dataframe
 #' @description
 #' Get the observation dataframe for a station and variable.
+#' - Detection condition
+#'   - measurement flags '<' and 'L' are considered 'below detection limit'
+#'   - measurement flags '>' and 'G' are considered 'above detection limit'
+#'   - any other value (or no value) is considered 'detected'
+#' - Water season
+#'   - 3-season approach (in use)
+#'     - high flow: May-July
+#'     - open water: from August-October
+#'     - under ice: is  November-April
+#'   - 2-season approach
+#'     - open water: is May-October
+#'     - winter: is December-April
 #' @param station The station to get the observation dataframe for
 #' @param variable The variable to get the observation dataframe for
 #' @return The observation dataframe
@@ -179,7 +191,20 @@ get_observation_df <- function(station, variable) {
     select
       sample_date::date as sample_date,
       measurement_value,
+      case
+        when measurement_flag is null then 'detected'
+        when measurement_flag = 'L' or measurement_flag = '<'
+          then 'below detection limit'
+        when measurement_flag = 'G' or measurement_flag = '>'
+          then 'above detection limit'
+        else 'unknown'
+      end as detection_condition,
       date_part('year', sample_date) as year,
+      case
+        when date_part('month', sample_date) in (5, 6, 7) then 'high flow'
+        when date_part('month', sample_date) in (8, 9, 10) then 'open water'
+        else 'under ice'
+      end as season,
       \"daily.flow.cms\" as daily_flow_cms,
       unit_code
     from consolidated_data
@@ -564,6 +589,10 @@ scatter_img <- function(station, variable) {
   min_year <- min_max[1] - 1
   max_year <- min_max[2] + 1
   the_df <- get_observation_df(station, variable)
+  # if any detection_condition is "unknown", stop
+  if (any(the_df$season == "unknown")) {
+    stop("Unknown detection_condition found in data")
+  }
   the_filename <- paste(
     get_safe_filename(c(station, variable, "scatter.jpeg")),
     collapse = "_"
@@ -576,8 +605,46 @@ scatter_img <- function(station, variable) {
   dir.create(dirname(the_filename), recursive = TRUE, showWarnings = FALSE)
   unit <- get_unit(variable)
   the_plot <- the_df %>%
-    ggplot(aes(x = .data$sample_date, y = .data$measurement_value)) +
-    geom_point() +
+    ggplot(
+      aes(
+        x = .data$sample_date,
+        y = .data$measurement_value,
+        shape = .data$detection_condition,
+        colour = as.factor(.data$season),
+        fill = .data$season
+      )
+    ) +
+    geom_point(
+      size = 2.5,
+      alpha = 0.85
+    ) +
+    scale_color_manual(
+      name = "Water Season",
+      values = c(
+        "high flow" = PERC_COLOURS[3], # nolint: object_usage_linter
+        "open water" = PERC_COLOURS[1], # nolint: object_usage_linter
+        "under ice" = PERC_COLOURS[5] # nolint: object_usage_linter
+      ),
+      labels = c("high flow", "open water", "under ice")
+    ) +
+    scale_fill_manual(
+      name = "Water Season",
+      values = c(
+        "high flow" = PERC_COLOURS[3], # nolint: object_usage_linter
+        "open water" = PERC_COLOURS[1], # nolint: object_usage_linter
+        "under ice" = PERC_COLOURS[5] # nolint: object_usage_linter
+      ),
+      labels = c("high flow", "open water", "under ice")
+    ) +
+    scale_shape_manual(
+      name = "Detection Condition",
+      values = c(
+        "detected" = 16, # solid circle
+        "below detection limit" = 6, # triangle down, not filled
+        "above detection limit" = 2, # triangle up, not filled
+        "unknown" = 4 # cross, not filled
+      ),
+    ) +
     theme_bw() +
     theme(
       axis.text.x = element_text(
