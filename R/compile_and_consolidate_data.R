@@ -359,7 +359,7 @@ str(consolidated_df2)
 
 # load AEPA SAR
 df.AEPA <- fread(here("data", "Water Quality-2024-04-04_AEPA_wSARcalc.csv"))
-stn_lookup <- read_excel(here("data", "Flow Data Availability.xlsx"), sheet="master", guess_max = 1048576)
+stn_lookup <- read_csv(here("data", "flow_data_availability.csv"))
 
 intersect(unique(df.AEPA$Station),unique(stn_lookup$StationName_WQdataset)) 
 
@@ -677,6 +677,10 @@ dfl.flow <- df.dailyQ.join %>%
             by = "Flow_StationNumber")
 
 df.missingWQstn <- dfl.flow %>% filter(is.na(StationName_WQdataset)) #checking if all flow values have a WQ name associated with them
+walk(df.missingWQstn$Flow_StationNumber, function(missing_station) {
+  stop(paste("Missing WQ station name for flow station:", missing_station))
+})
+
 
 str(consolidated_df_maxDL)
 merge.df1 <- consolidated_df_maxDL %>% 
