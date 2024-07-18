@@ -46,9 +46,13 @@ wq_parameters <- c(
 #### CITY OF CALGARY ####
   coc_df <- read_csv(here("data", "Watershed_Surface_Water_Quality_Data_CityofCalgary.csv")) %>%
     clean_names()
+
+#coc_df <- read_csv("D:/Documents/brbc_sow/data/Watershed_Surface_Water_Quality_Data_CityofCalgary.csv") %>%
+#  clean_names()
   
   # convert to standard date, strip time for flow join on later
-  coc_df$sample_date <- mdy_hm(coc_df$sample_date) 
+  coc_df$sample_date <- mdy_hm(coc_df$sample_date) %>%
+    as_date()
   
   #Total Nitrogen calculation  
   #need to add in TN after 2018
@@ -57,7 +61,7 @@ wq_parameters <- c(
     mutate(year = year(sample_date)) %>% 
     filter(year > 2018) %>% 
     filter(parameter %in% c("NOx (Calculated)", "Total Kjeldahl Nitrogen (TKN)")) %>% 
-    select(-id, -numeric_result, -result_qualifier) %>% #needed for pivoting
+    select(-id, -numeric_result, -result_qualifier, -result_units) %>% #needed for pivoting
     pivot_wider(names_from = parameter, values_from = formatted_result) %>% 
     mutate(`NOx (Calculated)_num` = as.numeric(`NOx (Calculated)`)) %>% #create new numeric column to retain censored values
     mutate(`Total Kjedahl Nitrogen (TKN)_num` = as.numeric(`Total Kjeldahl Nitrogen (TKN)`)) %>% #create new numeric column to retain censored values
@@ -65,8 +69,12 @@ wq_parameters <- c(
     mutate(`Total Nitrogen` = `NOx (Calculated)_num` + `Total Kjedahl Nitrogen (TKN)_num`) %>% #TN calculation
     select(-c(`NOx (Calculated)_num`,`Total Kjedahl Nitrogen (TKN)_num`))  #remove numeric columns
   
+  coc_dupes <- coc_df %>%
+    dplyr::summarise(n = dplyr::n(), .by = c(sample_site, sample_date, latitude_degrees, longitude_degrees,
+                                             site_key, parameter, formatted_result)) %>%
+    dplyr::filter(n > 1L) 
     
-  coc_tn$`Total Nitrogen`[coc_tn$`Total Nitrogen` == 0] <- NA #when both NOx and TKN are censored substitute NA
+coc_tn$`Total Nitrogen`[coc_tn$`Total Nitrogen` == 0] <- NA #when both NOx and TKN are censored substitute NA
   
 coc_tn <- coc_tn %>%  pivot_longer(cols = -sample_site:-year, 
                names_to = "parameter", 
@@ -142,7 +150,9 @@ coc_stations <- c(
   "Bow River Cushing Bridge",
   "Big Hill Creek Mouth",
   "Fish Creek Mouth",
-  "Bow River Below Bearspaw Dam"
+  "Bow River Below Bearspaw Dam",
+  "Nose Creek Mouth",
+  "Jumpingpound Creek Mouth"
 )
 
 coc_df <- coc_df %>%
@@ -155,11 +165,17 @@ coc_df <- coc_df %>%
 aepa_df <- read_csv(here("data", "Water Quality-2023-06-12_GovofAlberta.csv")) %>% 
   clean_names()
 
+#aepa_df1 <- read_csv("D:/Documents/brbc_sow/data/Water Quality-2023-06-12_GovofAlberta.csv") %>% 
+#  clean_names()
+
 aepa_df$sample_date_time <- mdy_hm(aepa_df$sample_date_time) %>% 
   as_date()
 
 aepa_df2 <- read_csv(here("data", "Water Quality-2023_GovofAB_TSS_TDS_variables.csv")) %>% 
   clean_names()
+
+#aepa_df2 <- read_csv("D:/Documents/brbc_sow/data/Water Quality-2023_GovofAB_TSS_TDS_variables.csv") %>% 
+#  clean_names()
 
 aepa_df2$sample_date_time <- mdy_hms(aepa_df2$sample_date_time) %>% 
   as_date()
@@ -230,6 +246,9 @@ aepa_df <- aepa_df %>%
 #### ENVIRONMENT CANADA ####
 eccc_df <- read_csv(here("data", "Water-Qual-Eau-S-Saskatchewan-2000-present_ECCC.csv")) %>%
   clean_names()
+
+#eccc_df <- read_csv("D:/Documents/brbc_sow/data/Water-Qual-Eau-S-Saskatchewan-2000-present_ECCC.csv") %>%
+#  clean_names()
 
 eccc_df$date_time <- ymd_hm(eccc_df$date_time) %>%
   as_date()
