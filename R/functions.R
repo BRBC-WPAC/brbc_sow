@@ -463,6 +463,10 @@ flow_img <- function(station) {
   min_year <- min_max[1] - 1
   max_year <- min_max[2] + 1
   the_df <- get_flow_df(station)
+
+  # for any missing days in the_df, put in a row with NA for measurement_value
+  the_df <- the_df %>%
+    tidyr::complete(sample_date = seq.Date(min(the_df$sample_date), max(the_df$sample_date), by = "day"))
   the_plot <- the_df %>%
     ggplot(
       aes(
@@ -513,6 +517,7 @@ flow_img <- function(station) {
 #' Image is saved to the output/figures directory.
 #' @param station The station to plot
 #' @param variable The variable to plot
+#' @param log10 Whether to use log10 scale
 #' @return The filename of the generated image
 flux_img <- function(station, variable, log10 = TRUE) {
   captions <- list()
@@ -546,29 +551,54 @@ flux_img <- function(station, variable, log10 = TRUE) {
       )
   } else {
     the_df <- get_flux_df(the_df)
-    the_df <- set_percentile_bin(the_df, CUTOFF_YEAR) # nolint: object_usage_linter
-    the_df$colour_cut <- cut(the_df$perc_bin, breaks = PERC_BINS) # nolint: object_usage_linter
-    the_plot <- the_df %>%
-      ggplot(
-        aes(
-          x = .data$year,
-          y = .data$measurement_value,
-          group = .data$year,
-          fill = .data$colour_cut
+    if (is.null(the_df)) {
+      caption <- "Note: No flow data for this station matches this variable's sample dates."
+      captions <- c(captions, caption)
+      the_plot <- the_df %>%
+        ggplot() +
+        labs(
+          y = variable
         )
-      ) +
-      geom_boxplot(show.legend = TRUE) +
-      scale_fill_manual(
-        name = "Percentile",
-        values = PERC_COLOURS, # nolint: object_usage_linter
-        drop = FALSE, # need this argument to keep unused categories
-        na.value = NA_COLOUR, # nolint: object_usage_linter
-        labels = PERC_LABELS # nolint: object_usage_linter
-      ) +
-      scale_y_log10(
-        oob = scales::squish_infinite
-      ) +
-      labs(y = paste("log10(", variable, ")", sep = ""))
+    } else {
+      the_df <- set_percentile_bin(the_df, CUTOFF_YEAR) # nolint: object_usage_linter
+      the_df$colour_cut <- cut(the_df$perc_bin, breaks = PERC_BINS) # nolint: object_usage_linter
+      the_plot <- the_df %>%
+        ggplot(
+          aes(
+            x = .data$year,
+            y = .data$measurement_value,
+            group = .data$year,
+            fill = .data$colour_cut
+          )
+        ) +
+        geom_boxplot(show.legend = TRUE) +
+        scale_fill_manual(
+          name = "Percentile",
+          values = PERC_COLOURS, # nolint: object_usage_linter
+          drop = FALSE, # need this argument to keep unused categories
+          na.value = NA_COLOUR, # nolint: object_usage_linter
+          labels = PERC_LABELS # nolint: object_usage_linter
+        )
+    }
+
+
+    if (log10) {
+      the_plot <- the_plot +
+        scale_y_log10(
+          oob = scales::squish_infinite
+        ) +
+        labs(
+          subtitle = "Water Quality Percentile Comparisons : Flux (log10 scale)",
+          y = paste("log10(", variable, ")", sep = "")
+        )
+    } else {
+      the_unit <- the_df$unit_code[1]
+      the_plot <- the_plot +
+        labs(
+          subtitle = "Water Quality Percentile Comparisons : Flux (as measured)",
+          y = paste(variable, the_unit)
+        )
+    }
 
     the_plot <- the_plot +
       theme_bw() +
@@ -583,7 +613,6 @@ flux_img <- function(station, variable, log10 = TRUE) {
       ) +
       labs(
         title = station,
-        subtitle = "Water Quality Percentile Comparisons : Flux (cms)",
         x = NULL # remove x-axis label since years are self-explanatory
       ) +
       scale_x_continuous(
