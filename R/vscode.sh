@@ -3,4 +3,6 @@
 set -e
 set -x
 
-code --install-extension reditorsupport.r --force
+code --install-extension reditorsupport.r
+code --install-extension github.copilot
+code --install-extension mechatroner.rainbow-csv
