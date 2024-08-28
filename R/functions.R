@@ -212,7 +212,7 @@ get_observation_df <- function(station, variable) {
   query <- "
     select
       sample_date::date as sample_date,
-      measurement_value,
+      measurement_maxDLsub as measurement_value,
       case
         when measurement_flag is null then 'detected'
         when measurement_flag = 'L' or measurement_flag = '<'
