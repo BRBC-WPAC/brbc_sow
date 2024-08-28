@@ -514,7 +514,13 @@ flow_img <- function(station) {
 #' @param station The station to plot
 #' @param variable The variable to plot
 #' @return The filename of the generated image
-flux_img <- function(station, variable) {
+flux_img <- function(station, variable, log10 = TRUE) {
+  captions <- list()
+  if (log10) {
+    ending <- paste0("log_flux.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter
+  } else {
+    ending <- paste0("flux.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter
+  }
   the_filename <- paste(
     get_safe_filename(c(station, variable, ending)),
     collapse = "_"
