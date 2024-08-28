@@ -322,9 +322,9 @@ get_min_max <- function() {
 concentration_img <- function(station, variable, log10 = TRUE) {
   captions <- list()
   if (log10) {
-    ending <- "log_conc.jpeg"
+    ending <- paste0("log_conc.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter
   } else {
-    ending <- "conc.jpeg"
+    ending <- paste0("conc.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter
   }
   the_filename <- paste(
     get_safe_filename(c(station, variable, ending)),
@@ -448,7 +448,7 @@ flow_img <- function(station) {
   the_filename <- paste(
     get_safe_filename(c(
       station,
-      paste0("flow.", IMAGE_DEVICE) # nolint: object_usage_linter.
+      paste0("flow.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter.
     )),
     collapse = "_"
   )
@@ -516,7 +516,7 @@ flow_img <- function(station) {
 #' @return The filename of the generated image
 flux_img <- function(station, variable) {
   the_filename <- paste(
-    get_safe_filename(c(station, variable, "log_flux.jpeg")),
+    get_safe_filename(c(station, variable, ending)),
     collapse = "_"
   )
   the_filename <- here(
@@ -616,7 +616,7 @@ scatter_img <- function(station, variable) {
     stop("Unknown detection_condition found in data")
   }
   the_filename <- paste(
-    get_safe_filename(c(station, variable, "scatter.jpeg")),
+    get_safe_filename(c(station, variable, paste0("scatter.", tolower(IMAGE_DEVICE)))), # nolint: object_usage_linter
     collapse = "_"
   )
   the_filename <- here(
