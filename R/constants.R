@@ -12,10 +12,10 @@ PERC_BINS <- c(0, 0.1, 0.25, 0.75, 0.90, 1)
 # The names of the variables that we do not want to show on log10 scale
 # When rendering these, they will use non-transformed data and the plit
 # will include a caption explaining why they're not on log10 scale.
-NO_LOG_SCALE <- c("PH", "TURBIDITY", "ESCHERICHIA COLI")
+NO_LOG_SCALE <- c("PH")
 
 ## Plot appearance ####
-NA_COLOUR <- "grey50"
+NA_COLOUR <- "grey75"
 PERC_COLOURS <- c(
   "#00A6C8",
   "#ACE2E5",
@@ -41,5 +41,4 @@ PERC_LABELS <- c(
 IMAGE_WIDTH <- 12
 IMAGE_HEIGHT <- 8
 IMAGE_DPI <- 300
-IMAGE_DEVICE <- "jpeg"
-# nolint end: object_name_linter.
+IMAGE_DEVICE <- "JPEG"
