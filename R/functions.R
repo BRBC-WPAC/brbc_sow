@@ -147,13 +147,18 @@ get_flux_df <- function(the_df) {
 #' @param with_flow Whether to only get stations with flow data
 #' @return A list of all of the stations
 get_stations <- function(with_flow = FALSE) {
-  query <- "
-    select distinct
-      WQTC_StationName as station
-    from consolidated_data
-  "
   if (with_flow) {
-    query <- paste(query, "where \"daily.flow.cms\" is not null")
+    query <- "
+      select distinct
+        WQTC_StationName as station
+      from daily_flow
+    "
+  } else {
+    query <- "
+      select distinct
+        WQTC_StationName as station
+      from consolidated_data
+    "
   }
   result_df <- get_df(query)
   return(result_df$station)
