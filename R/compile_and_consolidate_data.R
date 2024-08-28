@@ -142,7 +142,9 @@ coc_stations <- c(
   "Bow River Cushing Bridge",
   "Big Hill Creek Mouth",
   "Fish Creek Mouth",
-  "Bow River Below Bearspaw Dam"
+  "Bow River Below Bearspaw Dam",
+  "Nose Creek Mouth",
+  "Jumpingpound Creek Mouth"
 )
 
 coc_df <- coc_df %>%
