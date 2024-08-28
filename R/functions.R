@@ -1,5 +1,4 @@
 
-source("constants.R")
 library(foreach)
 library(DBI)
 library(duckdb)
@@ -9,6 +8,9 @@ library(dplyr)
 library(here)
 library(ggplot2)
 library(purrr)
+library(tidyr)
+
+source(here("constants.R"))
 
 # Utility manipulation functions ####
 
