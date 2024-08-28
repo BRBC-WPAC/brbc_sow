@@ -69,7 +69,7 @@ get_safe_filename <- function(words) {
 #' * [percentile_station() in original file](./figure_generation.R)
 set_percentile_bin <- function(the_df, cutoff_year) {
   historical_range <- the_df %>%
-    dplyr::filter(.data$year != cutoff_year) %>%
+    dplyr::filter(.data$year < cutoff_year) %>%
     dplyr::filter(is.na(.data$measurement_value) != TRUE)
   if (nrow(historical_range) == 0) {
     # No historical data found
