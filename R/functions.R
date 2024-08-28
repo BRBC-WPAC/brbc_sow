@@ -110,20 +110,35 @@ get_flux_df <- function(the_df) {
   if (nrow(the_df) != nrow(flow_df)) {
     warning("NA values were dropped for flux calculation")
   }
-  if (nrow(the_df) > 0) {
-    # The unit_code must be "mg/L".
+  if (nrow(flow_df) > 0) {
+    # The unit_code must be "mg/L" or "No/100 mL"
     unit_code <- flow_df$unit_code[1]
-    if (unit_code != "mg/L") {
-      stop("Unit code must be 'mg/L' for flux calculation")
+    if (unit_code == "mg/L") {
+      out_unit_code <- "mg/d"
+      # measurement unit is /L, so no conversion needed
+      volume_conversion_factor <- 1
+    } else if (unit_code == "No/100 mL") {
+      out_unit_code <- "No/d"
+      # measurement unit is /100 mL, so convert to L
+      volume_conversion_factor <- 0.1
+    } else {
+      stop(
+        paste0(
+          "Unit code must be 'mg/L' or No/100 mL for flux calculation, not '",
+          unit_code,
+          "'"
+        )
+      )
     }
     flow_df <- flow_df %>%
       mutate(
-        measurement_value = (.data$measurement_value * 0.001) * (.data$daily_flow_cms * 86400), # nolint: line_length_linter.
-        unit_code = "mg/d"
+        measurement_value = (.data$measurement_value * volume_conversion_factor * 0.001) * (.data$daily_flow_cms * 86400), # nolint: line_length_linter.
+        unit_code = out_unit_code
       )
     return(flow_df)
   }
-  # leave this as undefined if no data
+  warning("No data found for flux calculation")
+  return(NULL)
 }
 
 # Data retrieval functions ####
@@ -156,8 +171,8 @@ get_variables <- function(only_concentrations = FALSE) {
         variable_name
       from consolidated_data
       where
-        variable_name != 'ESCHERICHIA COLI'
-        and unit_code like '%g/L'
+        variable_name = 'ESCHERICHIA COLI'
+        or unit_code like '%g/L'
       "
   } else {
     query <- "
