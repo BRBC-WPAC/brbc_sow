@@ -15,7 +15,7 @@ RUN DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes \
     gdebi-core \
     curl
 
-RUN if [ ! -f code.deb ]; then curl -sL "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64" -o code.deb; fi
+RUN curl -sL "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64" -o code.deb
 RUN gdebi -n code.deb
 
 RUN echo "copilot-enabled=1" >> /etc/rstudio/rsession.conf
