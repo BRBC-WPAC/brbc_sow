@@ -4,6 +4,7 @@
 CONSOLIDATED_DATA_FILE <- "consolidated_data-maxDL-flow.csv"
 DAILY_FLOW_FILE <- "daily flows.csv"
 DUCKDB_FILE <- "db.duckdb"
+GUIDELINE_FILE <- "Guidelines.csv"
 
 ## Data processing ####
 CUTOFF_YEAR <- 2022
