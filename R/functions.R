@@ -501,7 +501,13 @@ flow_img <- function(station) {
 
   # for any missing days in the_df, put in a row with NA for measurement_value
   the_df <- the_df %>%
-    tidyr::complete(sample_date = seq.Date(min(the_df$sample_date), max(the_df$sample_date), by = "day"))
+    tidyr::complete(
+      sample_date = seq.Date(
+        min(the_df$sample_date),
+        max(the_df$sample_date),
+        by = "day"
+      )
+    )
   the_plot <- the_df %>%
     ggplot(
       aes(
@@ -587,7 +593,7 @@ flux_img <- function(station, variable, log10 = TRUE) {
   } else {
     the_df <- get_flux_df(the_df)
     if (is.null(the_df)) {
-      caption <- "Note: No flow data for this station matches this variable's sample dates."
+      caption <- "Note: No flow data for this station matches this variable's sample dates." # nolint: line_length_linter.
       captions <- c(captions, caption)
       the_plot <- the_df %>%
         ggplot() +
