@@ -409,6 +409,11 @@ concentration_img <- function(station, variable, log10 = TRUE) {
   )
   dir.create(dirname(the_filename), recursive = TRUE, showWarnings = FALSE)
   unit <- get_unit(variable)
+  if (unit == "pH units") {
+    display_unit <- ""
+  } else {
+    display_unit <- unit
+  }
   min_max <- get_min_max()
   min_year <- min_max[1] - 1
   max_year <- min_max[2] + 1
