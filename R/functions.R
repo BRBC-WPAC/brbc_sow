@@ -344,6 +344,43 @@ get_min_max <- function() {
   return(c(min_year, max_year))
 }
 
+#' Get guidelines
+#' @param variable The variable to get the guidelines for
+#' @return The guidelines for the variable
+get_guidelines <- function(variable, unit_code) {
+  query <- "
+    select
+      source,
+      variable_name,
+      lower_value,
+      upper_value,
+      unit_code,
+      exposure_duration
+    from guideline
+    where variable_name = ?
+    and unit_code = ?
+  "
+  result_df <- get_df(query, list(variable, unit_code))
+  the_count <- nrow(result_df)
+  if (the_count == 0) {
+    query <- "select count(*) from guideline where variable_name = ?"
+    if (get_df(query, list(variable))$count[1] != 0) {
+      stop(
+        paste0(
+          "Incorrect unit_code supplied for guideline variable ",
+          variable,
+          ": ",
+          unit_code,
+          "instead of ",
+          result_df$unit_code[1]
+        )
+      )
+    } # It's OK if there are no guidelines for this variable
+  } else {
+    return(result_df)
+  }
+}
+
 # Plotting functions ####
 
 #' Generate an image with boxplots grouped by year
