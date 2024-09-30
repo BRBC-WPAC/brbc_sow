@@ -434,14 +434,6 @@ concentration_img <- function(station, variable, log10 = TRUE) {
           group = .data$year,
           fill = .data$colour_cut
         )
-      ) +
-      geom_boxplot(show.legend = TRUE) +
-      scale_fill_manual(
-        name = "Percentile",
-        values = PERC_COLOURS, # nolint: object_usage_linter
-        drop = FALSE, # need this argument to keep unused categories
-        na.value = NA_COLOUR, # nolint: object_usage_linter
-        labels = PERC_LABELS # nolint: object_usage_linter
       )
     if (log10) {
       # If variable is in NO_LOG_SCALE, plot raw data
@@ -456,24 +448,130 @@ concentration_img <- function(station, variable, log10 = TRUE) {
         )
         captions <- c(captions, caption)
       }
+
+      guideline_df <- get_guidelines(variable, unit)
+      if (!is.null(guideline_df)) {
+        for (i in 1:nrow(guideline_df)) {
+          guideline <- guideline_df[i, ]
+          # If both upper and lower, plot as area
+          if (!is.na(guideline$lower_value) && !is.na(guideline$upper_value)) {
+            guideline_text <- paste0(
+              guideline$lower_value,
+              " - ",
+              guideline$upper_value,
+              " ",
+              display_unit
+            )
+            the_plot <- the_plot +
+              geom_rect(
+                aes(
+                  xmin = -Inf,
+                  xmax = Inf,
+                  ymin = guideline$upper_value,
+                  ymax = Inf
+                ),
+                fill = "red",
+                alpha = 0.2,
+                color = "red",
+                linetype = "dashed",
+                data = data.frame(),
+                inherit.aes = FALSE
+              )
+            the_plot <- the_plot +
+              geom_rect(
+                aes(
+                  xmin = -Inf,
+                  xmax = Inf,
+                  ymin = -Inf,
+                  ymax = guideline$lower_value
+                ),
+                fill = "red",
+                alpha = 0.2,
+                color = "red",
+                linetype = "dashed",
+                data = data.frame(),
+                inherit.aes = FALSE
+              )
+          } else {
+            if (!is.na(guideline$lower_value)) {
+              guideline_text <- paste0(
+                ">",
+                guideline$lower_value,
+                " ",
+                display_unit
+              )
+              the_plot <- the_plot +
+                geom_hline(
+                  yintercept = guideline$lower_value,
+                  linetype = "dashed",
+                  color = "red"
+                )
+            } else {
+              guideline_text <- paste0(
+                "<",
+                guideline$upper_value,
+                " ",
+                display_unit
+              )
+              the_plot <- the_plot +
+                geom_hline(
+                  yintercept = guideline$upper_value,
+                  linetype = "dashed",
+                  color = "red"
+                )
+            }
+          }
+
+          source <- guideline$source
+          exposure_duration <- guideline$exposure_duration
+          if (!is.na(exposure_duration)) {
+            exposure_duration <- paste0(" ", exposure_duration, " guideline: ")
+          } else {
+            exposure_duration <- " guideline: "
+          }
+          captions <- c(
+            captions,
+            paste0(
+              source,
+              exposure_duration,
+              guideline_text
+            )
+          )
+        }
+      }
     }
 
+    the_plot <- the_plot +
+      geom_boxplot(show.legend = TRUE) +
+      scale_fill_manual(
+        name = "Percentile",
+        values = PERC_COLOURS, # nolint: object_usage_linter
+        drop = FALSE, # need this argument to keep unused categories
+        na.value = NA_COLOUR, # nolint: object_usage_linter
+        labels = PERC_LABELS # nolint: object_usage_linter
+      )
+
+
+    subtitle <- "Water Quality Percentile Comparisons : Concentration"
+    if (display_unit == "") {
+      unit_label <- ""
+    } else {
+      unit_label <- paste0(" (", display_unit, ")")
+    }
+
+    y_axis_label <- paste0(variable, unit_label)
     if (log10) {
       the_plot <- the_plot +
         scale_y_log10(
           oob = scales::squish_infinite
-        ) +
-        labs(
-          subtitle = "Water Quality Percentile Comparisons : log10 scale",
-          y = paste("log10(", variable, ")", sep = "")
         )
-    } else {
-      the_plot <- the_plot +
-        labs(
-          subtitle = "Water Quality Percentile Comparisons : as measured",
-          y = paste(variable, " (", unit, ")", sep = "")
-        )
+      captions <- c(captions, "Note: y-axis is on log10 scale")
     }
+    the_plot <- the_plot +
+      labs(
+        subtitle = subtitle,
+        y = y_axis_label
+      )
   }
 
   the_plot <- the_plot +
@@ -659,22 +757,12 @@ flux_img <- function(station, variable, log10 = TRUE) {
         )
     }
 
-
+    subtitle <- "Water Quality Percentile Comparisons : Flux"
+    y_axis_label <- paste(variable, " (", the_df$unit_code[1], ")", sep = "")
     if (log10) {
       the_plot <- the_plot +
         scale_y_log10(
           oob = scales::squish_infinite
-        ) +
-        labs(
-          subtitle = "Water Quality Percentile Comparisons : Flux (log10 scale)",
-          y = paste("log10(", variable, ")", sep = "")
-        )
-    } else {
-      the_unit <- the_df$unit_code[1]
-      the_plot <- the_plot +
-        labs(
-          subtitle = "Water Quality Percentile Comparisons : Flux (as measured)",
-          y = paste(variable, the_unit)
         )
     }
 
@@ -691,7 +779,9 @@ flux_img <- function(station, variable, log10 = TRUE) {
       ) +
       labs(
         title = station,
-        x = NULL # remove x-axis label since years are self-explanatory
+        subtitle = subtitle,
+        x = NULL, # remove x-axis label since years are self-explanatory
+        y = y_axis_label
       ) +
       scale_x_continuous(
         limits = c(min_year, max_year)
