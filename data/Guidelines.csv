@@ -1,0 +1,9 @@
+source,variable_name,lower_value,upper_value,unit_code,exposure_duration
+AEPA Protection of Aquatic Life (PAL),CHLORIDE DISSOLVED,,120,mg/L,chronic
+AEPA Protection of Aquatic Life (PAL),CHLORIDE DISSOLVED,,640,mg/L,acute
+AEPA Protection of Aquatic Life (PAL),"NITROGEN, NITRATE",,3,mg/L,chronic
+AEPA Protection of Aquatic Life (PAL),"NITROGEN, NITRATE",,124,mg/L,acute
+AEPA Protection of Aquatic Life (PAL),PH,6.5,9.0,pH units,
+AEPA Protection of Aquatic Life (PAL),SULPHATE DISSOLVED,,309,mg/L,
+AEPA Protection of Agricultural Uses,SODIUM ADSORPTION RATIO (CALCD.),,5,rel units,
+AEPA Recreation and Aesthetics,ESCHERICHIA COLI,,100,No/100 mL,

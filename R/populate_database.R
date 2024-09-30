@@ -21,6 +21,8 @@ csv_file <- here("output", CONSOLIDATED_DATA_FILE) # nolint: object_usage_linter
 dbWriteTable(con, "consolidated_data", read_csv(csv_file), overwrite = TRUE)
 csv_file <- here("output", DAILY_FLOW_FILE) # nolint: object_usage_linter
 dbWriteTable(con, "daily_flow", read_csv(csv_file), overwrite = TRUE)
+csv_file <- here("data", GUIDELINE_FILE) # nolint: object_usage_linter
+dbWriteTable(con, "guideline", read_csv(csv_file), overwrite = TRUE)
 
 # TODO: Address unit issue in source data.
 # ESCHERICHIA COLI has 2 units: MPN/100mL, No/100 mL
