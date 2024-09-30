@@ -383,6 +383,111 @@ get_guidelines <- function(variable, unit_code) {
 
 # Plotting functions ####
 
+add_guidelines <- function(
+  captions,
+  the_plot,
+  the_df,
+  variable,
+  unit,
+  display_unit
+) {
+  guideline_df <- get_guidelines(variable, unit)
+  if (!is.null(guideline_df)) {
+    for (i in 1:nrow(guideline_df)) {
+      guideline <- guideline_df[i, ]
+      # If both upper and lower, plot as area
+      if (!is.na(guideline$lower_value) && !is.na(guideline$upper_value)) {
+        guideline_text <- paste0(
+          guideline$lower_value,
+          " - ",
+          guideline$upper_value,
+          " ",
+          display_unit
+        )
+        the_plot <- the_plot +
+          geom_rect(
+            aes(
+              xmin = -Inf,
+              xmax = Inf,
+              ymin = guideline$upper_value,
+              ymax = Inf
+            ),
+            fill = "red",
+            alpha = 0.2,
+            color = "red",
+            linetype = "dashed",
+            data = data.frame(),
+            inherit.aes = FALSE
+          )
+        the_plot <- the_plot +
+          geom_rect(
+            aes(
+              xmin = -Inf,
+              xmax = Inf,
+              ymin = -Inf,
+              ymax = guideline$lower_value
+            ),
+            fill = "red",
+            alpha = 0.2,
+            color = "red",
+            linetype = "dashed",
+            data = data.frame(),
+            inherit.aes = FALSE
+          )
+      } else {
+        if (!is.na(guideline$lower_value)) {
+          guideline_text <- paste0(
+            ">",
+            guideline$lower_value,
+            " ",
+            display_unit
+          )
+          the_plot <- the_plot +
+            geom_hline(
+              yintercept = guideline$lower_value,
+              linetype = "dashed",
+              color = "red"
+            )
+        } else {
+          guideline_text <- paste0(
+            "<",
+            guideline$upper_value,
+            " ",
+            display_unit
+          )
+          the_plot <- the_plot +
+            geom_hline(
+              yintercept = guideline$upper_value,
+              linetype = "dashed",
+              color = "red"
+            )
+        }
+      }
+
+      source <- guideline$source
+      exposure_duration <- guideline$exposure_duration
+      if (!is.na(exposure_duration)) {
+        exposure_duration <- paste0(" ", exposure_duration, " guideline: ")
+      } else {
+        exposure_duration <- " guideline: "
+      }
+      captions <- c(
+        captions,
+        paste0(
+          source,
+          exposure_duration,
+          guideline_text
+        )
+      )
+    }
+  }
+
+  results <- list()
+  results$the_plot <- the_plot
+  results$captions <- captions
+  return(results)
+}
+
 #' Generate an image with boxplots grouped by year
 #' @description
 #' Generate an image with boxplots grouped by year.
@@ -454,96 +559,16 @@ concentration_img <- function(station, variable, log10 = TRUE) {
         captions <- c(captions, caption)
       }
 
-      guideline_df <- get_guidelines(variable, unit)
-      if (!is.null(guideline_df)) {
-        for (i in 1:nrow(guideline_df)) {
-          guideline <- guideline_df[i, ]
-          # If both upper and lower, plot as area
-          if (!is.na(guideline$lower_value) && !is.na(guideline$upper_value)) {
-            guideline_text <- paste0(
-              guideline$lower_value,
-              " - ",
-              guideline$upper_value,
-              " ",
-              display_unit
-            )
-            the_plot <- the_plot +
-              geom_rect(
-                aes(
-                  xmin = -Inf,
-                  xmax = Inf,
-                  ymin = guideline$upper_value,
-                  ymax = Inf
-                ),
-                fill = "red",
-                alpha = 0.2,
-                color = "red",
-                linetype = "dashed",
-                data = data.frame(),
-                inherit.aes = FALSE
-              )
-            the_plot <- the_plot +
-              geom_rect(
-                aes(
-                  xmin = -Inf,
-                  xmax = Inf,
-                  ymin = -Inf,
-                  ymax = guideline$lower_value
-                ),
-                fill = "red",
-                alpha = 0.2,
-                color = "red",
-                linetype = "dashed",
-                data = data.frame(),
-                inherit.aes = FALSE
-              )
-          } else {
-            if (!is.na(guideline$lower_value)) {
-              guideline_text <- paste0(
-                ">",
-                guideline$lower_value,
-                " ",
-                display_unit
-              )
-              the_plot <- the_plot +
-                geom_hline(
-                  yintercept = guideline$lower_value,
-                  linetype = "dashed",
-                  color = "red"
-                )
-            } else {
-              guideline_text <- paste0(
-                "<",
-                guideline$upper_value,
-                " ",
-                display_unit
-              )
-              the_plot <- the_plot +
-                geom_hline(
-                  yintercept = guideline$upper_value,
-                  linetype = "dashed",
-                  color = "red"
-                )
-            }
-          }
-
-          source <- guideline$source
-          exposure_duration <- guideline$exposure_duration
-          if (!is.na(exposure_duration)) {
-            exposure_duration <- paste0(" ", exposure_duration, " guideline: ")
-          } else {
-            exposure_duration <- " guideline: "
-          }
-          captions <- c(
-            captions,
-            paste0(
-              source,
-              exposure_duration,
-              guideline_text
-            )
-          )
-        }
-      }
+      results <- add_guidelines(
+        captions,
+        the_plot,
+        the_df,
+        variable,
+        unit,
+        display_unit
+      )
+      the_plot <- results$the_plot
+      captions <- results$captions
     }
 
     the_plot <- the_plot +
@@ -557,7 +582,7 @@ concentration_img <- function(station, variable, log10 = TRUE) {
       )
 
 
-    subtitle <- "Water Quality Percentile Comparisons : Concentration"
+    subtitle <- "Water Quality Percentile Comparisons: Concentration/value"
     if (display_unit == "") {
       unit_label <- ""
     } else {
@@ -609,7 +634,6 @@ concentration_img <- function(station, variable, log10 = TRUE) {
     height = IMAGE_HEIGHT, # nolint: object_usage_linter
     dpi = IMAGE_DPI # nolint: object_usage_linter
   )
-
   return(the_filename)
 }
 
