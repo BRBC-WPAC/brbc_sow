@@ -119,8 +119,8 @@ get_flux_df <- function(the_df) {
       volume_conversion_factor <- 1
     } else if (unit_code == "No/100 mL") {
       out_unit_code <- "No/d"
-      # measurement unit is /100 mL, so convert to L
-      volume_conversion_factor <- 0.1
+      # measurement unit is x/100 mL, so convert to x/L
+      volume_conversion_factor <- 10
     } else {
       stop(
         paste0(
@@ -130,10 +130,26 @@ get_flux_df <- function(the_df) {
         )
       )
     }
+    seconds_per_day <- 24 * 60 * 60
     flow_df <- flow_df %>%
       mutate(
-        measurement_value = (.data$measurement_value * volume_conversion_factor * 0.001) * (.data$daily_flow_cms * 86400), # nolint: line_length_linter.
-        unit_code = out_unit_code
+        conc = .data$measurement_value,
+        conc_unit = unit_code
+      ) %>%
+      mutate(
+        measurement_value = (
+          # convert to x/L
+          (.data$measurement_value * volume_conversion_factor)
+
+          # convert from x/L to x/m3
+          * 1000
+
+          # multiply by daily flow by seconds per day to get daily flux in x/d
+          * (.data$daily_flow_cms * seconds_per_day)
+        ),
+        unit_code = out_unit_code,
+        conc = .data$measurement_value,
+        conc_unit = unit_code
       )
     return(flow_df)
   }
