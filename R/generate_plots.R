@@ -20,7 +20,7 @@ the_list <- map(stations, function(station) {
     list(station = station, variable = variable)
   })
 }) %>% unlist(recursive = FALSE)
-log_scale_filenames <-future_map(the_list, function(the_pair) {
+log_scale_filenames <- future_map(the_list, function(the_pair) {
   concentration_img( # nolint: object_usage_linter.
     the_pair$station,
     the_pair$variable
