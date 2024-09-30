@@ -466,7 +466,7 @@ write.csv(df.max.mdl, file=here("output", "./MAX MDL Scan Details.csv"), row.nam
 # changed TOC, Cl, NO3, TDP, TSS for AEPA and NH3 for CoC
 
 # read final maxDL back in
-max.mdl = read.csv(here("output", "./MAX MDL Scan Details.csv"))
+max.mdl <- read.csv(here("data", "./MAX MDL Scan Details.csv"))
 
 # Substitute to Max DL
 df.mdl = NULL
