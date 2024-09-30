@@ -261,6 +261,13 @@ get_observation_df <- function(station, variable) {
     where
       WQTC_StationName = ?
       and variable_name = ?
+      and 
+      case
+        when
+          measurement_flag2 is null or measurement_flag2 = FALSE
+          then measurement_value
+        else measurement_maxDLsub
+      end is not null
     "
   the_df <- get_df(query, list(station, variable))
   return(the_df)
