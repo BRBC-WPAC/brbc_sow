@@ -228,14 +228,26 @@ get_observation_df <- function(station, variable) {
   query <- "
     select
       sample_date::date as sample_date,
-      measurement_maxDLsub as measurement_value,
       case
-        when measurement_flag is null then 'detected'
-        when measurement_flag = 'L' or measurement_flag = '<'
-          then 'below detection limit'
-        when measurement_flag = 'G' or measurement_flag = '>'
-          then 'above detection limit'
-        else 'unknown'
+        when
+          measurement_flag2 is null or measurement_flag2 = FALSE
+          then measurement_value
+        else measurement_maxDLsub
+      end as measurement_value,
+
+      case
+        when
+          measurement_flag2 is null or measurement_flag2 = FALSE
+          then
+            case
+              when measurement_flag is null then 'detected'
+              when measurement_flag = 'L' or measurement_flag = '<'
+                then 'below detection limit'
+              when measurement_flag = 'G' or measurement_flag = '>'
+                then 'above detection limit'
+              else 'unknown'
+            end
+        else 'below detection limit'
       end as detection_condition,
       date_part('year', sample_date) as year,
       case
