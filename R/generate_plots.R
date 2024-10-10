@@ -14,7 +14,21 @@ doFuture::registerDoFuture()
 # Generate plots ####
 ## Percentiles bucketed by year ####
 stations <- get_stations()
+stations_with_flow <- get_stations(with_flow = TRUE)
 variables <- get_variables()
+
+faceted_flux_filenames <- future_map(stations_with_flow, function(station) {
+  faceted_flux_img(
+    station
+  )
+})
+
+faceted_concentration_filenames <- future_map(stations, function(station) {
+  faceted_concentration_img(
+    station
+  )
+})
+
 the_list <- map(stations, function(station) {
   map(variables, function(variable) {
     list(station = station, variable = variable)
@@ -43,7 +57,6 @@ scatter_filenames <- future_map(the_list, function(the_pair) {
 })
 
 ## Flow over time ####
-stations_with_flow <- get_stations(with_flow = TRUE)
 flow_filenames <- future_map(stations_with_flow, function(station) {
   flow_img(
     station
