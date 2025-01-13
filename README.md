@@ -33,22 +33,19 @@ The container definition is in the `docker-compose.yaml` file.
 From the bash command-line, you can build and run the container with the following command.
 
 ```bash
-docker-compose up -d --build
+docker compose up -d
 ```
 
 ## Generating the plots
 
-Three scripts must be executed in this order.
-Steps to run the scripts via bash command-line are listed below.
+Run `run.sh` from the CLI to generate the plots.
 Once complete, generated images can be found in the `output/figures` folder inside the container.
 From your host workstation, is folder can be found in the `R/output/figures` subfolder of the folder where you cloned this repository into.
+Furthermore, the images generated will be within subfolders of the `output/figures` folder, organized by the type of plot (individual or faceted).
 
 ```bash
 cd /home/rstudio/workspace/BRBC_SOW
-Rscript compile_and_consolidate_data.R
-Rscript populate_database.R
-Rscript generate_plots.R
+./run.sh
 ```
 
-There is a bash script present in the R project folder named `run.sh`.
-Executing this file will run all of the scripts listed above.
+
