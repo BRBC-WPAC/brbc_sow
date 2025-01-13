@@ -219,14 +219,16 @@ get_stations <- function(with_flow = FALSE) {
   if (with_flow) {
     query <- "
       select distinct
-        WQTC_StationName as station
-      from daily_flow
+        f.WQTC_StationName as station
+      from daily_flow f
+      join consolidated_data c on f.WQTC_StationName = c.WQTC_StationName
     "
   } else {
     query <- "
       select distinct
         WQTC_StationName as station
       from consolidated_data
+      where WQTC_StationName is not null
     "
   }
   result_df <- get_df(query)
