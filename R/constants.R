@@ -17,6 +17,7 @@ NO_LOG_SCALE <- c("PH")
 
 ## Plot appearance ####
 NA_COLOUR <- "grey75"
+FLOW_COLOUR <- "blue"
 PERC_COLOURS <- c(
   "#00A6C8",
   "#ACE2E5",
@@ -33,6 +34,37 @@ PERC_LABELS <- c(
   ">90th",
   "Not ranked"
 )
+GUIDELINE_BOUND_COLOURS <- c("red", "red", "blue")
+GUIDELINE_BOUND_LABELS <- c("Upper acute", "Upper chronic", "Lower chronic")
+GUIDELINE_EXPOSURE_LINETYPES <- c("solid", "dotted", "dotted")
+
+SEASON_LEVELS <- c("high flow", "open water", "under ice")
+
+WATER_QUALITY_NOT_AVAILABLE <- "Unavailable"
+STANDARD_FOOTNOTE <- "This figure was created for the BRBC State of the Watershed Report, Water Quality Chapter. For more information visit: brbc.ab.ca/state-of-the-watershed"
+CONCENTRATION_FOOTNOTES <- c(
+  STANDARD_FOOTNOTE,
+  "The guideline for ammonia could not be calculated with the available data.",
+  "The guideline for sulphate assumes total hardness between 76 and 180 mg/L.",
+  "Guidelines for total phosphorus, total nitrogen, total suspended solids and turbidity are narratives and cannot be shown on a graph."
+)
+INDIVIDUAL_CONCENTRATION_FOOTNOTES <- c(
+  "The guideline for ammonia could not be calculated with the available data.",
+  "The guideline for sulphate assumes total hardness between 76 and 180 mg/L.",
+  "Guideline for total phosphorus is narrative and cannot be shown on a graph.",
+  "Guideline for total nitrogen is narrative and cannot be shown on a graph.",
+  "Guideline for total suspended solids is narrative and cannot be shown on a graph.",
+  "Guideline for turbidity is narrative and cannot be shown on a graph."
+)
+names(INDIVIDUAL_CONCENTRATION_FOOTNOTES) <- c(
+  "AMMONIA TOTAL",
+  "SULPHATE DISSOLVED",
+  "PHOSPHORUS TOTAL (P)",
+  "NITROGEN TOTAL (CALCD.)",
+  "TOTAL SUSPENDED SOLIDS (TSS)",
+  "TURBIDITY"
+)
+
 
 
 ## Image generation ####
