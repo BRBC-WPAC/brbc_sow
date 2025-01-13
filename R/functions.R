@@ -81,43 +81,18 @@ apply_scale_y_log10 <- function(...) {
 
 # Data functions ####
 
-#' Set percentile bin
+#' Percentile binning function
 #' @description
-#' Set the percentile bin for a dataframe.
-#' Originally from Eric Camm.
-#' @param the_df The dataframe to add the percentile bin to
+#' Bins the measurement values into percentiles.
+#' @param measurement_values The measurement values to bin
+#' @param years The years to bin
 #' @param cutoff_year The year to cut off the data
-#' @return The dataframe with the percentile bin added
-#' @seealso
-#' * stats::ecdf()
-#' * [percentile_station() in original file](./figure_generation.R)
-set_percentile_bin <- function(the_df, cutoff_year) {
-  historical_range <- the_df %>%
-    dplyr::filter(.data$year < cutoff_year) %>%
-    dplyr::filter(is.na(.data$measurement_value) != TRUE)
-  if (nrow(historical_range) == 0) {
-    # No historical data found
-    # Set perc_bin to nan so that it shows up as "Not ranked" when plotted
-    the_df <- the_df %>% mutate(perc_bin = NaN)
-  } else {
-    perc_distribution <- ecdf(historical_range$measurement_value)
-    perc_df <- the_df %>%
-      group_by(.data$year) %>%
-      # comparing median against percentiles, could also use mean here
-      summarize(avg = median(.data$measurement_value)) %>%
-      mutate(perc_bin = perc_distribution(.data$avg)) %>%
-      # make sure that any perc_bin values that are 0 are set to 0.01
-      mutate(perc_bin = ifelse(.data$perc_bin == 0, 0.01, .data$perc_bin))
-    the_df <- left_join(the_df, perc_df, by = "year")
-  }
-  return(the_df)
-}
-
+#' @return The percentile bin
 perc_bin_f <- function(
-    measurement_values,
-    years,
-    cutoff_year = CUTOFF_YEAR # nolint: object_usage_linter.
-    ) {
+  measurement_values,
+  years,
+  cutoff_year = CUTOFF_YEAR # nolint: object_usage_linter.
+) {
   historical_range <- measurement_values[
     years < cutoff_year &
       !is.na(measurement_values)
