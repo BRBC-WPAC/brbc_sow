@@ -72,6 +72,13 @@ facet_title <- function(variable_names, unit_codes) {
   return(facet_titles)
 }
 
+apply_scale_y_log10 <- function(...) {
+  scale_y_continuous(
+    ...,
+    transform = scales::log10_trans()
+  )
+}
+
 # Data functions ####
 
 #' Set percentile bin
@@ -669,8 +676,9 @@ concentration_img <- function(station, variable, log10 = TRUE) {
     y_axis_label <- paste0(variable, unit_label)
     if (log10) {
       the_plot <- the_plot +
-        scale_y_log10(
-          oob = scales::squish_infinite
+        apply_scale_y_log10(
+          oob = scales::oob_squish_infinite,
+          labels = scales::comma
         )
       captions <- c(captions, "Note: y-axis is on log10 scale")
     }
@@ -874,10 +882,15 @@ flux_img <- function(station, variable, log10 = TRUE) {
     y_axis_label <- paste(variable, " (", the_df$unit_code[1], ")", sep = "")
     if (log10) {
       the_plot <- the_plot +
-        scale_y_log10(
-          oob = scales::squish_infinite
-        )
+          apply_scale_y_log10(
+            oob = scales::oob_squish_infinite,
+            labels = scales::comma
+          )
+      }
     }
+  }
+
+  subtitle <- "Water Quality Percentile Comparisons : Flux"
 
     the_plot <- the_plot +
       theme_bw() +
@@ -1242,7 +1255,13 @@ faceted_concentration_img <- function(station) {
           title = "Bound",
           order = 3
         )
-      )
+      ),
+      color = "none"
+    ) +
+    apply_scale_y_log10(
+      oob = scales::oob_squish_infinite,
+      labels = scales::comma
+    ) +
   }
 
   ggsave(
@@ -1402,15 +1421,11 @@ faceted_flux_img <- function(station) {
           linewidth = 1
         ),
         order = 1
-      ),
-      linetype = guide_legend(
-        title = "Guideline",
-        order = 2
-      ),
-      color = guide_legend(
-        title = "Bound",
-        order = 3
       )
+    ) +
+    apply_scale_y_log10(
+      oob = scales::oob_squish_infinite,
+      labels = scales::comma
     )
 
   ggsave(
