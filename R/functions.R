@@ -117,6 +117,15 @@ perc_bin_f <- function(
   return(a_df$perc_bin)
 }
 
+get_flux_unit <- function(unit_code) {
+  flux_unit <- ifelse(
+    unit_code == "No/100 mL",
+    "No/s",
+    "mg/s"
+  )
+  return(flux_unit)
+}
+
 #' Get flux dataframe
 #' @description
 #' Calculates the flux for a dataframe.
@@ -133,64 +142,71 @@ perc_bin_f <- function(
 #' @return The dataframe with the flux added
 #' @examples
 get_flux_df <- function(the_df) {
+  flux_compatible_units <- c("mg/L", "No/100 mL")
+  known_incompatible_units <- c("pH units", "µS/cm", "rel units")
   # copy and drop NA values for daily flow
-  flow_df <- data.frame(the_df) %>% filter(!is.na(.data$daily_flow_cms))
+  flow_df <- data.frame(the_df) %>%
+    # check for flow data
+    filter(!is.na(.data$daily_flow_cms))
   # warn if NAs were dropped
-  if (nrow(the_df) != nrow(flow_df)) {
-    warning("NA values were dropped for flux calculation")
+  if (show_warnings && nrow(the_df) != nrow(flow_df)) {
+    warning("Values were dropped for flux calculation because of NA flow data")
   }
-  if (nrow(flow_df) > 0) {
-    # The unit_code must be "mg/L" or "No/100 mL"
-    unit_code <- flow_df$unit_code[1]
-    if (unit_code == "mg/L") {
-      out_unit_code <- "kg/d"
-      # measurement unit is /L, so no conversion needed
-      volume_conversion_factor <- 1
-      # convert mg to kg (1000mg = 1g, 1000g = 1kg)
-      unit_conversion_factor <- 1e-6
-    } else if (unit_code == "No/100 mL") {
-      out_unit_code <- "billion/d"
-      # measurement unit is x/100 mL, so convert to x/L
-      volume_conversion_factor <- 10
-      # convert from "No" to billions
-      unit_conversion_factor <- 1e-7
-    } else {
-      stop(
-        paste0(
-          "Unit code must be 'mg/L' or No/100 mL for flux calculation, not '",
-          unit_code,
-          "'"
+  last_count <- nrow(flow_df)
+  flow_df <- flow_df %>%
+    # check unit_code
+    filter(.data$unit_code %in% flux_compatible_units)
+  if (last_count != nrow(flow_df)) {
+    # are all of the unit_code values in the known incompatible units?
+    bad_unit <- unique(
+      flow_df$unit_code[!flow_df$unit_code %in% flux_compatible_units]
+    )
+    if (length(bad_unit) > 0  && all(bad_unit %in% known_incompatible_units)) {
+      if (show_warnings) {
+        warning(
+          paste(
+            "Unit code",
+            bad_unit,
+            "is not compatible with flux calculation"
+          )
         )
-      )
+      }
+      return(NULL)
     }
-    seconds_per_day <- 24 * 60 * 60
-    litres_per_cubic_metre <- 1000
+  }
+
+  if (nrow(flow_df) > 0) {
     flow_df <- flow_df %>%
       mutate(
         conc = .data$measurement_value,
-        conc_unit = unit_code
+        conc_unit = .data$unit_code
+      ) %>%
+      mutate(
+        volume_conversion_factor = ifelse(
+          .data$conc_unit == "No/100 mL",
+          10,
+          1
+        ),
+        unit_code = get_flux_unit(.data$unit_code)
       ) %>%
       mutate(
         measurement_value = (
           # convert to x/L
-          (.data$measurement_value * volume_conversion_factor)
+          (.data$measurement_value * .data$volume_conversion_factor)
 
-          # convert to x'/m3
-          * unit_conversion_factor
+          # convert from x/L to x/m3
+          * 1000
 
-            # convert from x/L to x/m3
-            * litres_per_cubic_metre
-
-            # multiply by daily flow by seconds per day to get daily flux in x/d
-            * (.data$daily_flow_cms * seconds_per_day)
+          # multiply by daily flow (m3/s) to get flux in (x/s)
+          * .data$daily_flow_cms
         ),
-        unit_code = out_unit_code,
-        conc = .data$measurement_value,
-        conc_unit = unit_code
+        conc = .data$measurement_value
       )
     return(flow_df)
   }
-  warning("No data found for flux calculation")
+  if (show_warnings) {
+    warning("No data found for flux calculation")
+  }
   return(NULL)
 }
 
@@ -785,8 +801,13 @@ flow_img <- function(station) {
 #' @param log10 Whether to use log10 scale
 #' @return The filename of the generated image
 flux_img <- function(station, variable, log10 = TRUE) {
-  captions <- list()
+  captions <- list(STANDARD_FOOTNOTE) # nolint: object_usage_linter
+  label <- NULL
+  unit <- get_unit(variable)
+  flux_unit <- get_flux_unit(unit)
+  y_axis_label <- paste(variable, " (", flux_unit, ")", sep = "")
   if (log10) {
+    y_axis_label <- paste(y_axis_label, "log10 scale", sep = "\n")
     ending <- paste0("log_flux.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter
   } else {
     ending <- paste0("flux.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter
@@ -798,34 +819,39 @@ flux_img <- function(station, variable, log10 = TRUE) {
   the_filename <- here(
     "output",
     "figures",
+    "individual",
     the_filename
   )
-  dir.create(dirname(the_filename), recursive = TRUE, showWarnings = FALSE)
+  dir.create(
+    dirname(the_filename),
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
   min_max <- get_min_max()
   min_year <- min_max[1] - 1
   max_year <- min_max[2] + 1
   the_df <- get_observation_df(station, variable)
-  captions <- list()
   if (nrow(the_df) == 0) {
-    caption <- "Note: No data found for this station and variable."
+    caption <- "No data found for this station and variable."
     captions <- c(captions, caption)
     the_plot <- the_df %>%
       ggplot() +
       labs(
         y = variable
       )
+    label <- WATER_QUALITY_NOT_AVAILABLE # nolint: object_usage_linter
   } else {
     the_df <- get_flux_df(the_df)
     if (is.null(the_df)) {
-      caption <- "Note: No flow data for this station matches this variable's sample dates." # nolint: line_length_linter.
+      caption <- "No flow data for this station matches this variable's sample dates." # nolint: line_length_linter.
       captions <- c(captions, caption)
       the_plot <- the_df %>%
         ggplot() +
         labs(
           y = variable
         )
+      label <- WATER_QUALITY_NOT_AVAILABLE # nolint: object_usage_linter
     } else {
-      # the_df <- set_percentile_bin(the_df, CUTOFF_YEAR) # nolint: object_usage_linter
       the_df <- the_df %>%
         mutate(
           perc_bin = perc_bin_f(
@@ -843,20 +869,35 @@ flux_img <- function(station, variable, log10 = TRUE) {
             fill = .data$colour_cut
           )
         ) +
-        geom_boxplot(show.legend = TRUE) +
+        geom_boxplot(show.legend = FALSE) +
+        geom_point(
+          aes(
+            fill = .data$colour_cut
+          ),
+          shape = 22,
+          alpha = 0,
+          show.legend = TRUE
+        ) +
         scale_fill_manual(
           name = "Percentile",
           values = PERC_COLOURS, # nolint: object_usage_linter
           drop = FALSE, # need this argument to keep unused categories
           na.value = NA_COLOUR, # nolint: object_usage_linter
           labels = PERC_LABELS # nolint: object_usage_linter
+        ) +
+        guides(
+          fill = guide_legend(
+            title = "Percentile",
+            override.aes = list(
+              alpha = 1,
+              size = 6,
+              linewidth = 1
+            ),
+            order = 1
+          )
         )
-    }
-
-    subtitle <- "Water Quality Percentile Comparisons : Flux"
-    y_axis_label <- paste(variable, " (", the_df$unit_code[1], ")", sep = "")
-    if (log10) {
-      the_plot <- the_plot +
+      if (log10) {
+        the_plot <- the_plot +
           apply_scale_y_log10(
             oob = scales::oob_squish_infinite,
             labels = scales::comma
@@ -867,30 +908,48 @@ flux_img <- function(station, variable, log10 = TRUE) {
 
   subtitle <- "Water Quality Percentile Comparisons : Flux"
 
-    the_plot <- the_plot +
-      theme_bw() +
-      theme(
-        axis.text.x = element_text(
-          face = "bold",
-          angle = 90,
-          vjust = 0.5,
-          hjust = 1
-        ),
-        axis.text.y = element_text(face = "bold")
-      ) +
-      labs(
-        title = station,
-        subtitle = subtitle,
-        x = NULL, # remove x-axis label since years are self-explanatory
-        y = y_axis_label
-      ) +
-      scale_x_continuous(
-        limits = c(min_year, max_year)
-      )
-  }
+  the_plot <- the_plot +
+    theme_bw() +
+    theme(
+      axis.text.x = element_text(
+        face = "bold",
+        angle = 90,
+        vjust = 0.5,
+        hjust = 1
+      ),
+      axis.text.y = element_text(face = "bold"),
+      plot.caption = element_text(hjust = 0)
+    ) +
+    labs(
+      title = station,
+      subtitle = subtitle,
+      x = NULL, # remove x-axis label since years are self-explanatory
+      y = y_axis_label
+    ) +
+    scale_x_continuous(
+      limits = c(min_year, max_year)
+    )
 
-  if (length(captions) > 0) {
-    the_plot <- the_plot + labs(caption = paste(captions, collapse = "\n"))
+  if (length(captions) == 1) {
+    captions <- c(captions, " ")
+  }
+  the_plot <- the_plot + labs(caption = paste(captions, collapse = "\n"))
+
+  if (!is.null(label)) {
+    the_plot <- the_plot +
+      geom_label(
+        aes(
+          x = .data$year,
+          y = .data$measurement_value,
+          label = .data$text
+        ),
+        hjust = "middle",
+        data = data.frame(
+          measurement_value = 1,
+          year = 2011,
+          text = label
+        )
+      )
   }
 
   ggsave(
