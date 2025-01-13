@@ -10,6 +10,7 @@ library(purrr)
 library(tidyr)
 
 source(here("constants.R"))
+show_warnings <- FALSE
 
 # Utility manipulation functions ####
 
