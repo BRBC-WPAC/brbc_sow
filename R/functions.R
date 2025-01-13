@@ -338,9 +338,23 @@ get_observation_df <- function(station, variable = NULL) {
       sample_date
     "
   )
-  the_df <- get_df(query, params)
-  # year as int
-  the_df$year <- as.integer(the_df$year)
+  the_df <- get_df(query, params) %>%
+    mutate(
+      year = as.integer(.data$year),
+      season = factor(
+        .data$season,
+        levels = SEASON_LEVELS # nolint: object_usage_linter.
+      ),
+      detection_condition = factor(
+        .data$detection_condition,
+        levels = c(
+          "below detection limit",
+          "detected",
+          "above detection limit"
+        )
+      )
+    )
+
   return(the_df)
 }
 
@@ -383,14 +397,14 @@ get_unit <- function(variable) {
       where variable_name = ?
     "
     units <- get_df(query, list(variable))
-    error_message <- paste(
-      "Multiple units found for variable ",
-      variable,
-      ":",
-      units$unit_code[1],
-      sep = ""
+    stop(
+      paste0(
+        "Multiple units found for variable ",
+        variable,
+        ":",
+        units$unit_code[1]
+      )
     )
-    stop(error_message)
   } else {
     return(result_df$unit_code[1])
   }
@@ -415,148 +429,7 @@ get_min_max <- function() {
   return(c(min_year, max_year))
 }
 
-#' Get guidelines
-#' @param variable The variable to get the guidelines for
-#' @return The guidelines for the variable
-get_guidelines <- function(variable, unit_code) {
-  query <- "
-    select
-      source,
-      variable_name,
-      lower_value,
-      upper_value,
-      unit_code,
-      exposure_duration
-    from guideline
-    where variable_name = ?
-    and unit_code = ?
-  "
-  result_df <- get_df(query, list(variable, unit_code))
-  the_count <- nrow(result_df)
-  if (the_count == 0) {
-    query <- "select count(*) from guideline where variable_name = ?"
-    if (get_df(query, list(variable))$count[1] != 0) {
-      stop(
-        paste0(
-          "Incorrect unit_code supplied for guideline variable ",
-          variable,
-          ": ",
-          unit_code,
-          "instead of ",
-          result_df$unit_code[1]
-        )
-      )
-    } # It's OK if there are no guidelines for this variable
-  } else {
-    return(result_df)
-  }
-}
-
 # Plotting functions ####
-
-add_guidelines <- function(
-    captions,
-    the_plot,
-    the_df,
-    variable,
-    unit,
-    display_unit) {
-  guideline_df <- get_guidelines(variable, unit)
-  if (!is.null(guideline_df)) {
-    for (i in 1:nrow(guideline_df)) {
-      guideline <- guideline_df[i, ]
-      # If both upper and lower, plot as area
-      if (!is.na(guideline$lower_value) && !is.na(guideline$upper_value)) {
-        guideline_text <- paste0(
-          guideline$lower_value,
-          " - ",
-          guideline$upper_value,
-          " ",
-          display_unit
-        )
-        the_plot <- the_plot +
-          geom_rect(
-            aes(
-              xmin = -Inf,
-              xmax = Inf,
-              ymin = guideline$upper_value,
-              ymax = Inf
-            ),
-            fill = "red",
-            alpha = 0.2,
-            color = "red",
-            linetype = "dashed",
-            data = data.frame(),
-            inherit.aes = FALSE
-          )
-        the_plot <- the_plot +
-          geom_rect(
-            aes(
-              xmin = -Inf,
-              xmax = Inf,
-              ymin = -Inf,
-              ymax = guideline$lower_value
-            ),
-            fill = "red",
-            alpha = 0.2,
-            color = "red",
-            linetype = "dashed",
-            data = data.frame(),
-            inherit.aes = FALSE
-          )
-      } else {
-        if (!is.na(guideline$lower_value)) {
-          guideline_text <- paste0(
-            ">",
-            guideline$lower_value,
-            " ",
-            display_unit
-          )
-          the_plot <- the_plot +
-            geom_hline(
-              yintercept = guideline$lower_value,
-              linetype = "dashed",
-              color = "red"
-            )
-        } else {
-          guideline_text <- paste0(
-            "<",
-            guideline$upper_value,
-            " ",
-            display_unit
-          )
-          the_plot <- the_plot +
-            geom_hline(
-              yintercept = guideline$upper_value,
-              linetype = "dashed",
-              color = "red"
-            )
-        }
-      }
-
-      source <- guideline$source
-      exposure_duration <- guideline$exposure_duration
-      if (!is.na(exposure_duration)) {
-        exposure_duration <- paste0(" ", exposure_duration, " guideline: ")
-      } else {
-        exposure_duration <- " guideline: "
-      }
-      captions <- c(
-        captions,
-        paste0(
-          source,
-          exposure_duration,
-          guideline_text
-        )
-      )
-    }
-  }
-
-  results <- list()
-  results$the_plot <- the_plot
-  results$captions <- captions
-  return(results)
-}
 
 #' Generate an image with boxplots grouped by year
 #' @description
@@ -567,8 +440,20 @@ add_guidelines <- function(
 #' @param log10 Whether to use log10 scale
 #' @return The filename of the generated image
 concentration_img <- function(station, variable, log10 = TRUE) {
-  captions <- list()
+  if (is.na(station)) {
+    stop("Station is NA")
+  }
+  captions <- list(STANDARD_FOOTNOTE) # nolint: object_usage_linter
+  label <- NULL
+  unit <- get_unit(variable)
+  if (unit == "pH units") {
+    unit_label <- ""
+  } else {
+    unit_label <- paste0(" (", unit, ")")
+  }
+  y_axis_label <- paste0(variable, unit_label)
   if (log10) {
+    y_axis_label <- paste(y_axis_label, "log10 scale", sep = "\n")    
     ending <- paste0("log_conc.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter
   } else {
     ending <- paste0("conc.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter
@@ -580,15 +465,14 @@ concentration_img <- function(station, variable, log10 = TRUE) {
   the_filename <- here(
     "output",
     "figures",
+    "individual",
     the_filename
   )
-  dir.create(dirname(the_filename), recursive = TRUE, showWarnings = FALSE)
-  unit <- get_unit(variable)
-  if (unit == "pH units") {
-    display_unit <- ""
-  } else {
-    display_unit <- unit
-  }
+  dir.create(
+    dirname(the_filename),
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
   min_max <- get_min_max()
   min_year <- min_max[1] - 1
   max_year <- min_max[2] + 1
@@ -603,8 +487,8 @@ concentration_img <- function(station, variable, log10 = TRUE) {
       labs(
         y = variable
       )
+    label <- WATER_QUALITY_NOT_AVAILABLE # nolint: object_usage_linter
   } else {
-    # the_df <- set_percentile_bin(the_df, CUTOFF_YEAR) # nolint: object_usage_linter
     the_df <- the_df %>%
       mutate(
         perc_bin = perc_bin_f(
@@ -627,62 +511,125 @@ concentration_img <- function(station, variable, log10 = TRUE) {
       plot_raw <- variable %in% NO_LOG_SCALE # nolint: object_usage_linter
       if (plot_raw) {
         log10 <- FALSE
-        caption <- paste(
-          "Note: ",
-          variable,
-          " is intentionally not shown on log10 scale",
-          sep = ""
-        )
-        captions <- c(captions, caption)
       }
-
-      results <- add_guidelines(
-        captions,
-        the_plot,
-        the_df,
-        variable,
-        unit,
-        display_unit
-      )
-      the_plot <- results$the_plot
-      captions <- results$captions
     }
 
     the_plot <- the_plot +
-      geom_boxplot(show.legend = TRUE) +
+      geom_boxplot(show.legend = FALSE) +
+      geom_point(
+        aes(
+          fill = .data$colour_cut
+        ),
+        shape = 22,
+        alpha = 0,
+        show.legend = TRUE
+      ) +
       scale_fill_manual(
         name = "Percentile",
         values = PERC_COLOURS, # nolint: object_usage_linter
         drop = FALSE, # need this argument to keep unused categories
         na.value = NA_COLOUR, # nolint: object_usage_linter
         labels = PERC_LABELS # nolint: object_usage_linter
+      ) +
+      scale_linetype_manual(
+        values = GUIDELINE_EXPOSURE_LINETYPES, # nolint: object_usage_linter
+        drop = FALSE
+      ) +
+      scale_color_manual(
+        values = GUIDELINE_BOUND_COLOURS, # nolint: object_usage_linter
+        drop = FALSE
+      ) +
+      guides(
+        fill = guide_legend(
+          title = "Percentile",
+          override.aes = list(
+            alpha = 1,
+            size = 6,
+            linewidth = 0
+          ),
+          order = 1
+        )
       )
 
-
-    subtitle <- "Water Quality Percentile Comparisons : Concentration"
-    if (display_unit == "") {
-      unit_label <- ""
-    } else {
-      unit_label <- paste0(" (", display_unit, ")")
+    query <- "
+      select * from (
+        select
+          source,
+          variable_name,
+          lower_value as guideline_value,
+          'Lower '||exposure_duration as bound,
+          unit_code,
+          exposure_duration
+        from guideline
+        where lower_value is not null
+        union all
+        select
+          source,
+          variable_name,
+          upper_value as guideline_value,
+          'Upper '||exposure_duration as bound,
+          unit_code,
+          exposure_duration
+        from guideline
+        where upper_value is not null
+      )
+      where variable_name = ?
+      and unit_code = ?
+    "
+    guideline_df <- get_df(query, list(variable, unit)) %>%
+      group_by(.data$variable_name) %>%
+      mutate(
+        facet_title = facet_title(.data$variable_name, .data$unit_code)
+      ) %>%
+      ungroup()
+    if (!is.na(INDIVIDUAL_CONCENTRATION_FOOTNOTES[variable])) { # nolint: object_usage_linter
+      captions <- c(
+        captions,
+        INDIVIDUAL_CONCENTRATION_FOOTNOTES[[variable]] # nolint: object_usage_linter.
+      )
     }
+    if (!is.null(guideline_df)) {
+      guideline_df$bound <- factor(
+        guideline_df$bound,
+        levels = GUIDELINE_BOUND_LABELS # nolint: object_usage_linter.
+      )
 
-    y_axis_label <- paste0(variable, unit_label)
+      the_plot <- the_plot +
+        geom_hline(
+          aes(
+            yintercept = .data$guideline_value,
+            linetype = .data$bound,
+            color = .data$bound
+          ),
+          data = guideline_df,
+          show.legend = TRUE
+        ) +
+        guides(
+          linetype = guide_legend(
+            title = "Guideline",
+            order = 2,
+            drop = FALSE,
+            override.aes = list(
+              color = GUIDELINE_BOUND_COLOURS # nolint: object_usage_linter
+            )
+          ),
+          color = "none"
+        )
+    }
     if (log10) {
       the_plot <- the_plot +
         apply_scale_y_log10(
           oob = scales::oob_squish_infinite,
           labels = scales::comma
         )
-      captions <- c(captions, "Note: y-axis is on log10 scale")
     }
-    the_plot <- the_plot +
-      labs(
-        subtitle = subtitle,
-        y = y_axis_label
-      )
   }
-
+  subtitle <- "Water Quality Percentile Comparisons : Concentration"
   the_plot <- the_plot +
+    labs(
+      subtitle = subtitle,
+      y = y_axis_label
+    ) +
     theme_bw() +
     theme(
       axis.text.x = element_text(
@@ -691,7 +638,8 @@ concentration_img <- function(station, variable, log10 = TRUE) {
         vjust = 0.5,
         hjust = 1
       ),
-      axis.text.y = element_text(face = "bold")
+      axis.text.y = element_text(face = "bold"),
+      plot.caption = element_text(hjust = 0)
     ) +
     labs(
       title = station,
@@ -701,8 +649,26 @@ concentration_img <- function(station, variable, log10 = TRUE) {
       limits = c(min_year, max_year)
     )
 
-  if (length(captions) > 0) {
-    the_plot <- the_plot + labs(caption = paste(captions, collapse = "\n"))
+  if (length(captions) == 1) {
+    captions <- c(captions, " ")
+  }
+  the_plot <- the_plot + labs(caption = paste(captions, collapse = "\n"))
+
+  if (!is.null(label)) {
+    the_plot <- the_plot +
+      geom_label(
+        aes(
+          x = .data$year,
+          y = .data$measurement_value,
+          label = .data$text
+        ),
+        hjust = "middle",
+        data = data.frame(
+          measurement_value = 1,
+          year = 2011,
+          text = label
+        )
+      )
   }
 
   ggsave(
@@ -725,32 +691,36 @@ flow_img <- function(station) {
   the_filename <- paste(
     get_safe_filename(c(
       station,
-      paste0("flow.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter.
+      paste0("FLOW.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter.
     )),
     collapse = "_"
   )
   the_filename <- here(
     "output",
     "figures",
+    "individual",
     the_filename
   )
-  dir.create(dirname(the_filename), recursive = TRUE, showWarnings = FALSE)
+  dir.create(
+    dirname(the_filename),
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
   unit <- "cms"
   min_max <- get_min_max()
   min_year <- min_max[1] - 1
   max_year <- min_max[2] + 1
-  the_df <- get_flow_df(station)
 
-  # for any missing days in the_df, put in a row with NA for measurement_value
-  the_df <- the_df %>%
+  captions <- list(STANDARD_FOOTNOTE) # nolint: object_usage_linter
+  the_plot <- get_flow_df(station) %>%
+    # for any missing days, put in a row with NA for measurement_value
     tidyr::complete(
       sample_date = seq.Date(
-        min(the_df$sample_date),
-        max(the_df$sample_date),
+        min(.data$sample_date),
+        max(.data$sample_date),
         by = "day"
       )
-    )
-  the_plot <- the_df %>%
+    ) %>%
     ggplot(
       aes(
         x = .data$sample_date,
@@ -758,8 +728,10 @@ flow_img <- function(station) {
       )
     ) +
     geom_line(
-      color = "blue",
-      linewidth = 0.25
+      color = FLOW_COLOUR,  # nolint: object_usage_linter
+      linewidth = 0.25,
+      na.rm = TRUE,
+      show.legend = FALSE
     ) +
     scale_x_date(
       date_labels = "%Y",
@@ -772,7 +744,8 @@ flow_img <- function(station) {
       title = station,
       subtitle = "Flow Data",
       y = paste("Daily Averaged Flow", " (", unit, ")", sep = ""),
-      x = NULL
+      x = NULL,
+      caption = paste(captions, collapse = "\n")
     ) +
     theme_bw() +
     theme(
@@ -782,7 +755,8 @@ flow_img <- function(station) {
         vjust = 0.5,
         hjust = 1
       ),
-      axis.text.y = element_text(face = "bold")
+      axis.text.y = element_text(face = "bold"),
+      plot.caption = element_text(hjust = 0)
     )
   ggsave(
     filename = the_filename,
@@ -987,9 +961,15 @@ scatter_img <- function(station, variable) {
   the_filename <- here(
     "output",
     "figures",
+    "individual",
     the_filename
   )
-  dir.create(dirname(the_filename), recursive = TRUE, showWarnings = FALSE)
+  dir.create(
+    dirname(the_filename),
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+  captions <- list(STANDARD_FOOTNOTE) # nolint: object_usage_linter
   unit <- get_unit(variable)
   the_plot <- the_df %>%
     ggplot(
@@ -997,7 +977,7 @@ scatter_img <- function(station, variable) {
         x = .data$sample_date,
         y = .data$measurement_value,
         shape = .data$detection_condition,
-        colour = as.factor(.data$season),
+        colour = .data$season,
         fill = .data$season
       )
     ) +
@@ -1040,13 +1020,15 @@ scatter_img <- function(station, variable) {
         vjust = 0.5,
         hjust = 1
       ),
-      axis.text.y = element_text(face = "bold")
+      axis.text.y = element_text(face = "bold"),
+      plot.caption = element_text(hjust = 0)
     ) +
     labs(
       title = station,
       subtitle = "Water Quality Percentile Comparisons : Scatter",
       x = NULL, # remove x-axis label since years are self-explanatory
-      y = paste(variable, " (", unit, ")", sep = "")
+      y = paste(variable, " (", unit, ")", sep = ""),
+      caption = paste(captions, collapse = "\n")
     ) +
     scale_x_date(
       date_labels = "%Y",
@@ -1073,223 +1055,253 @@ scatter_img <- function(station, variable) {
 #' @param station The station to plot
 #' @return The filename of the generated image
 faceted_concentration_img <- function(station) {
-  captions <- list()
   ending <- paste0("log_conc.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter
   the_filename <- paste(
     get_safe_filename(c(station, ending)),
     collapse = "_"
   )
+
+  # values
+  captions <- CONCENTRATION_FOOTNOTES # nolint: object_usage_linter
   the_filename <- here(
     "output",
     "figures",
+    "faceted",
     the_filename
   )
   min_max <- get_min_max()
-  min_year <- min_max[1] - 1
   max_year <- min_max[2] + 1
-  min_date <- as.Date(paste(min_year, "-01-01", sep = ""), "%Y-%m-%d")
+  min_date <- as.Date("2000-01-01", "%Y-%m-%d")
   max_date <- as.Date(paste(max_year, "-01-01", sep = ""), "%Y-%m-%d")
-  dir.create(dirname(the_filename), recursive = TRUE, showWarnings = FALSE)
+  dir.create(
+    dirname(the_filename),
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
 
   the_df <- get_observation_df(station)
-  # if the dataframe is empty, plot should be blank
   if (nrow(the_df) == 0) {
-    caption <- "Note: No data found for this station and variable."
-    captions <- c(captions, caption)
-    the_plot <- the_df %>%
-      ggplot() +
-      facet_grid(
-        . ~ variable_name
-      )
-  } else {
-    the_df <- the_df %>%
-      group_by(.data$variable_name) %>%
-      mutate(
-        facet_title = facet_title(.data$variable_name, .data$unit_code),
-        perc_bin = perc_bin_f(.data$measurement_value, .data$year)
-      ) %>%
-      ungroup()
-
-    the_df$colour_cut <- cut(the_df$perc_bin, breaks = PERC_BINS) # nolint: object_usage_linter
-
-    query <- "
-      select
-        source,
-        variable_name,
-        lower_value,
-        upper_value,
-        unit_code,
-        exposure_duration
-      from guideline
-    "
-    guideline_df <- get_df(query) %>%
-      group_by(.data$variable_name) %>%
-      mutate(
-        facet_title = facet_title(.data$variable_name, .data$unit_code)
-      ) %>%
-      ungroup()
-
-    line_df <- data.frame()
-    for (i in 1:nrow(guideline_df)) {
-      guideline <- guideline_df[i, ]
-      if (!is.na(guideline$upper_value)) {
-        line_df <- rbind(
-          line_df,
-          data.frame(
-            yintercept = c(guideline$upper_value),
-            facet_title = c(
-              facet_title(
-                guideline$variable_name,
-                guideline$unit_code
-              )
-            ),
-            bound = c("lower"),
-            exposure_duration = c(guideline$exposure_duration)
-          )
-        )
-      }
-      if (!is.na(guideline$lower_value)) {
-        line_df <- rbind(
-          line_df,
-          data.frame(
-            yintercept = c(guideline$lower_value),
-            facet_title = c(
-              facet_title(
-                guideline$variable_name,
-                guideline$unit_code
-              )
-            ),
-            bound = c("upper"),
-            exposure_duration = c(guideline$exposure_duration)
-          )
-        )
-      }
+    if (show_warnings) {
+      warning("No data found for this station")
     }
+    return(NULL)
+  }
+  the_df <- the_df %>%
+    group_by(.data$variable_name) %>%
+    mutate(
+      facet_title = facet_title(.data$variable_name, .data$unit_code),
+      perc_bin = perc_bin_f(.data$measurement_value, .data$year)
+    ) %>%
+    ungroup()
 
+  the_df$colour_cut <- cut(the_df$perc_bin, breaks = PERC_BINS) # nolint: object_usage_linter
 
-    flow_df <- get_flow_df(station) %>%
-      # for any missing days in the_df, put in a row with NA for measurement_value
-      tidyr::complete(
-        sample_date = seq.Date(
-          min(the_df$sample_date),
-          max(the_df$sample_date),
-          by = "day"
-        )
-      ) %>%
-      mutate(
-        facet_title = "Flow (cms)",
-        year = as.integer(format(as.Date(.data$sample_date), "%Y"))
+  query <- "
+    select
+      source,
+      variable_name,
+      lower_value as guideline_value,
+      'Lower '||exposure_duration as bound,
+      unit_code,
+      exposure_duration
+    from guideline
+    where lower_value is not null
+    union all
+    select
+      source,
+      variable_name,
+      upper_value as guideline_value,
+      'Upper '||exposure_duration as bound,
+      unit_code,
+      exposure_duration
+    from guideline
+    where upper_value is not null
+  "
+  guideline_df <- get_df(query) %>%
+    group_by(.data$variable_name) %>%
+    mutate(
+      facet_title = facet_title(.data$variable_name, .data$unit_code)
+    ) %>%
+    ungroup()
+
+  flow_df <- get_flow_df(station) %>%
+    # for any missing days in the_df, put in a row with NA for measurement_value
+    tidyr::complete(
+      sample_date = seq.Date(
+        min_date,
+        max_date,
+        by = "day"
       )
+    ) %>%
+    mutate(
+      facet_title = "FLOW (cms)",
+      year = as.integer(format(as.Date(.data$sample_date), "%Y"))
+    )
 
+  # if more than one year of data
+  if (length(unique(the_df$year)) > 1) {
     the_df <- the_df %>%
       mutate(
         sample_date = as.Date(paste0(.data$year, "-01-01"), "%Y-%m-%d")
       )
+  }
 
+  cols <- c(
+    "FLOW (cms)",
+    "AMMONIA TOTAL (mg/L)",
+    "CARBON TOTAL ORGANIC (TOC) (mg/L)",
+    "CHLORIDE DISSOLVED (mg/L)",
+    "ESCHERICHIA COLI (No/100 mL)",
+    "NITROGEN TOTAL (CALCD.) (mg/L)",
+    "NITROGEN, NITRATE (mg/L)",
+    "PH",
+    "PHOSPHORUS TOTAL (P) (mg/L)",
+    "PHOSPHORUS TOTAL DISSOLVED (mg/L)",
+    "SODIUM ADSORPTION RATIO (CALCD.)",
+    "SPECIFIC CONDUCTANCE (FIELD) (µS/cm)",
+    "SULPHATE DISSOLVED (mg/L)",
+    "TOTAL DISSOLVED SOLIDS (CALCD.) (mg/L)",
+    "TOTAL SUSPENDED SOLIDS (TSS) (mg/L)",
+    "TURBIDITY (NTU)"
+  )
+  the_df$name2 <- factor(the_df$facet_title, levels = cols)
+  guideline_df$name2 <- factor(guideline_df$facet_title, levels = cols)
+  guideline_df$bound <- factor(
+    guideline_df$bound,
+    levels = GUIDELINE_BOUND_LABELS # nolint: object_usage_linter.
+  )
+  flow_df$name2 <- factor(flow_df$facet_title, levels = cols)
 
+  facets_with_data <- unique(the_df$facet_title)
+  missing_facets <- setdiff(cols, unique(facets_with_data))
+  missing_facets <- missing_facets[missing_facets != "FLOW (cms)"]
+  no_flow_data <- all(is.na(flow_df$daily_flow_cms))
+  if (no_flow_data) {
+    missing_facets <- c(missing_facets, "FLOW (cms)")
+    if (show_warnings) {
+      warning(paste0("No flow data for ", station))
+    }
+  }
 
-    the_plot <- the_df %>%
-      ggplot(
-        aes(
-          x = .data$sample_date,
-          y = .data$measurement_value
-        )
-      ) +
-      geom_boxplot(
-        aes(
-          fill = .data$colour_cut,
-          group = .data$year
+  label_df <- data.frame(
+    facet_title = missing_facets
+  ) %>%
+    mutate(
+      measurement_value = 1,
+      sample_date = as.Date("2011-06-01", "%Y-%m-%d"),
+      name2 = factor(facet_title, levels = cols),
+      text = WATER_QUALITY_NOT_AVAILABLE # nolint: object_usage_linter
+    )
+
+  the_plot <- the_df %>%
+    ggplot(
+      aes(
+        x = .data$sample_date,
+        y = .data$measurement_value
+      )
+    ) +
+    geom_boxplot(
+      aes(
+        fill = .data$colour_cut,
+        group = .data$year
+      ),
+      show.legend = FALSE,
+      position = position_nudge(x = -0.5),
+      outlier.size = 1 / 5,
+      linewidth = 1 / 5,
+    ) +
+    geom_point(
+      aes(
+        fill = .data$colour_cut
+      ),
+      shape = 22,
+      alpha = 0,
+      show.legend = TRUE
+    ) +
+    scale_fill_manual(
+      values = PERC_COLOURS, # nolint: object_usage_linter
+      na.value = NA_COLOUR, # nolint: object_usage_linter
+      drop = FALSE, # need this argument to keep unused categories
+      labels = PERC_LABELS # nolint: object_usage_linter
+    ) +
+    scale_linetype_manual(
+      values = GUIDELINE_EXPOSURE_LINETYPES, # nolint: object_usage_linter.
+      drop = FALSE
+    ) +
+    scale_color_manual(
+      values = GUIDELINE_BOUND_COLOURS, # nolint: object_usage_linter.
+      drop = FALSE
+    ) +
+    theme_bw() +
+    theme(
+      axis.text.x = element_text(
+        angle = 90,
+        vjust = 0.5,
+        hjust = 1
+      ),
+      plot.caption = element_text(hjust = 0)
+    ) +
+    geom_hline(
+      aes(
+        yintercept = .data$guideline_value,
+        linetype = .data$bound,
+        color = .data$bound
+      ),
+      data = guideline_df
+    ) +
+    geom_line(
+      aes(
+        x = .data$sample_date,
+        y = .data$daily_flow_cms
+      ),
+      # dark grey
+      color = FLOW_COLOUR,  # nolint: object_usage_linter
+      linewidth = 1 / 12,
+      data = flow_df,
+      na.rm = TRUE
+    ) +
+    geom_label(
+      aes(
+        x = .data$sample_date,
+        y = .data$measurement_value,
+        label = .data$text
+      ),
+      hjust = "middle",
+      data = label_df
+    ) +
+    facet_wrap(
+      ~name2,
+      ncol = 4,
+      drop = FALSE,
+      scales = "free_y"
+    ) +
+    labs(
+      title = station,
+      subtitle = "Water Quality Percentile Comparisons",
+      y = "log10 scale",
+      x = ""
+    ) +
+    scale_x_date(
+      limits = c(min_date, max_date),
+      breaks = seq.Date(min_date, max_date, by = "5 year"),
+      date_labels = "%Y"
+    ) +
+    guides(
+      fill = guide_legend(
+        title = "Percentile",
+        override.aes = list(
+          alpha = 1,
+          size = 6,
+          linewidth = 1
         ),
-        show.legend = FALSE,
-        # width = 0.5 / max_year - min_year,
-        position = position_nudge(x = -0.5),
-        outlier.size = 1 / 5,
-        linewidth = 1 / 5
-      ) +
-      geom_point(
-        aes(
-          fill = .data$colour_cut
-        ),
-        shape = 22,
-        alpha = 0,
-        show.legend = TRUE
-      ) +
-      scale_fill_manual(
-        values = PERC_COLOURS, # nolint: object_usage_linter
-        na.value = NA_COLOUR, # nolint: object_usage_linter
-        drop = FALSE, # need this argument to keep unused categories
-        labels = PERC_LABELS # nolint: object_usage_linter
-      ) +
-      scale_linetype_manual(
-        values = c("solid", "dashed"), # nolint: object_usage_linter
-        labels = c("acute", "chronic") # nolint: object_usage_linter
-      ) +
-      scale_color_manual(
-        values = c("red", "blue"), # nolint: object_usage_linter
-        labels = c("upper", "lower") # nolint: object_usage_linter
-      ) +
-      theme_bw() +
-      theme(
-        axis.text.x = element_text(
-          angle = 90,
-          vjust = 0.5,
-          hjust = 1
-        ),
-      ) +
-      scale_y_log10(
-        oob = scales::squish_infinite,
-        labels = scales::comma
-      ) +
-      geom_hline(
-        aes(
-          yintercept = .data$yintercept,
-          linetype = .data$exposure_duration,
-          color = .data$bound
-        ),
-        data = line_df
-      ) +
-      geom_line(
-        aes(
-          x = .data$sample_date,
-          y = .data$daily_flow_cms
-        ),
-        # dark grey
-        color = "#333333",
-        linewidth = 1 / 12,
-        data = flow_df
-      ) +
-      facet_wrap(
-        ~facet_title,
-        scales = "free_y"
-      ) +
-      labs(
-        title = station,
-        subtitle = "Water Quality Percentile Comparisons",
-        y = "log10 scale",
-        x = ""
-      ) +
-      scale_x_date(
-        limits = c(min_date, max_date),
-        breaks = seq.Date(as.Date("2000-01-01"), max_date, by = "5 year"),
-        date_labels = "%Y"
-      ) +
-      guides(
-        fill = guide_legend(
-          title = "Percentile",
-          override.aes = list(
-            alpha = 1,
-            size = 6,
-            linewidth = 1
-          ),
-          order = 1
-        ),
-        linetype = guide_legend(
-          title = "Guideline",
-          order = 2
-        ),
-        color = guide_legend(
-          title = "Bound",
-          order = 3
+        order = 1
+      ),
+      linetype = guide_legend(
+        title = "Guideline",
+        order = 2,
+        drop = FALSE,
+        override.aes = list(
+          color = GUIDELINE_BOUND_COLOURS # nolint: object_usage_linter
         )
       ),
       color = "none"
@@ -1298,7 +1310,7 @@ faceted_concentration_img <- function(station) {
       oob = scales::oob_squish_infinite,
       labels = scales::comma
     ) +
-  }
+    labs(caption = paste(captions, collapse = "\n"))
 
   ggsave(
     filename = the_filename,
@@ -1311,7 +1323,6 @@ faceted_concentration_img <- function(station) {
 }
 
 faceted_flux_img <- function(station) {
-  captions <- list()
   ending <- paste0("log_flux.", tolower(IMAGE_DEVICE)) # nolint: object_usage_linter
   the_filename <- paste(
     get_safe_filename(c(station, ending)),
@@ -1320,14 +1331,18 @@ faceted_flux_img <- function(station) {
   the_filename <- here(
     "output",
     "figures",
+    "faceted",
     the_filename
   )
   min_max <- get_min_max()
-  min_year <- min_max[1] - 1
   max_year <- min_max[2] + 1
-  min_date <- as.Date(paste(min_year, "-01-01", sep = ""), "%Y-%m-%d")
+  min_date <- as.Date("2000-01-01", "%Y-%m-%d")
   max_date <- as.Date(paste(max_year, "-01-01", sep = ""), "%Y-%m-%d")
-  dir.create(dirname(the_filename), recursive = TRUE, showWarnings = FALSE)
+  dir.create(
+    dirname(the_filename),
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
 
   the_df <- get_observation_df(station)
   the_df <- get_flux_df(the_df)
@@ -1339,7 +1354,9 @@ faceted_flux_img <- function(station) {
 
   # if the dataframe is empty, plot should be blank
   if (is.null(the_df) || nrow(the_df) == 0) {
-    print(paste("No data (paired with daily flow) found for ", station))
+    if (show_warnings) {
+      warning(paste("No data (paired with daily flow) found for ", station))
+    }
     return(NULL)
   }
   the_df <- the_df %>%
@@ -1356,19 +1373,75 @@ faceted_flux_img <- function(station) {
     # for any missing days in the_df, put in a row with NA for measurement_value
     tidyr::complete(
       sample_date = seq.Date(
-        min(the_df$sample_date),
-        max(the_df$sample_date),
+        min_date,
+        max_date,
         by = "day"
       )
     ) %>%
     mutate(
-      facet_title = "Flow (cms)",
+      facet_title = "FLOW (cms)",
       year = as.integer(format(as.Date(.data$sample_date), "%Y"))
     )
 
   the_df <- the_df %>%
     mutate(
       sample_date = as.Date(paste0(.data$year, "-01-01"), "%Y-%m-%d")
+    )
+
+  cols <- c(
+    "FLOW (cms)",
+    "AMMONIA TOTAL (mg/s)",
+    "CARBON TOTAL ORGANIC (TOC) (mg/s)",
+    "CHLORIDE DISSOLVED (mg/s)",
+    "ESCHERICHIA COLI (No/s)",
+    "NITROGEN TOTAL (CALCD.) (mg/s)",
+    "NITROGEN, NITRATE (mg/s)",
+    "PH",
+    "PHOSPHORUS TOTAL (P) (mg/s)",
+    "PHOSPHORUS TOTAL DISSOLVED (mg/s)",
+    "SODIUM ADSORPTION RATIO (CALCD.)",
+    "SPECIFIC CONDUCTANCE (FIELD)",
+    "SULPHATE DISSOLVED (mg/s)",
+    "TOTAL DISSOLVED SOLIDS (CALCD.) (mg/s)",
+    "TOTAL SUSPENDED SOLIDS (TSS) (mg/s)",
+    "TURBIDITY"
+  )
+  the_df$name2 <- factor(the_df$facet_title, levels = cols)
+  flow_df$name2 <- factor(flow_df$facet_title, levels = cols)
+
+  facets_with_data <- unique(the_df$facet_title)
+  missing_facets <- setdiff(cols, unique(facets_with_data))
+  missing_facets <- missing_facets[missing_facets != "FLOW (cms)"]
+  no_flow_data <- all(is.na(flow_df$daily_flow_cms))
+  if (no_flow_data) {
+    missing_facets <- c(missing_facets, "FLOW (cms)")
+    if (show_warnings) {
+      warning(paste0("No flow data for ", station))
+    }
+  }
+
+  label_df <- data.frame(
+    facet_title = missing_facets
+  ) %>%
+    mutate(
+      measurement_value = 1,
+      sample_date = as.Date("2011-06-01", "%Y-%m-%d"),
+      name2 = factor(facet_title, levels = cols),
+      text = WATER_QUALITY_NOT_AVAILABLE # nolint: object_usage_linter
+    )
+  intentionally_left_blank <- c(
+    "PH",
+    "SODIUM ADSORPTION RATIO (CALCD.)",
+    "SPECIFIC CONDUCTANCE (FIELD)",
+    "TURBIDITY"
+  )
+  label_df <- label_df %>%
+    mutate(
+      text = ifelse(
+        facet_title %in% intentionally_left_blank,
+        "Not a flux parameter",
+        text
+      )
     )
 
   the_plot <- the_df %>%
@@ -1384,7 +1457,6 @@ faceted_flux_img <- function(station) {
         group = .data$year
       ),
       show.legend = FALSE,
-      # width = 0.5 / max_year - min_year,
       position = position_nudge(x = -0.5),
       outlier.size = 1 / 5,
       linewidth = 1 / 5
@@ -1403,14 +1475,6 @@ faceted_flux_img <- function(station) {
       drop = FALSE, # need this argument to keep unused categories
       labels = PERC_LABELS # nolint: object_usage_linter
     ) +
-    scale_linetype_manual(
-      values = c("solid", "dashed"), # nolint: object_usage_linter
-      labels = c("acute", "chronic") # nolint: object_usage_linter
-    ) +
-    scale_color_manual(
-      values = c("red", "blue"), # nolint: object_usage_linter
-      labels = c("upper", "lower") # nolint: object_usage_linter
-    ) +
     theme_bw() +
     theme(
       axis.text.x = element_text(
@@ -1418,10 +1482,7 @@ faceted_flux_img <- function(station) {
         vjust = 0.5,
         hjust = 1
       ),
-    ) +
-    scale_y_log10(
-      oob = scales::squish_infinite,
-      labels = scales::comma
+      plot.caption = element_text(hjust = 0)
     ) +
     geom_line(
       aes(
@@ -1429,12 +1490,24 @@ faceted_flux_img <- function(station) {
         y = .data$daily_flow_cms
       ),
       # dark grey
-      color = "#333333",
+      color = FLOW_COLOUR,  # nolint: object_usage_linter
       linewidth = 1 / 12,
-      data = flow_df
+      data = flow_df,
+      na.rm = TRUE
+    ) +
+    geom_label(
+      aes(
+        x = .data$sample_date,
+        y = .data$measurement_value,
+        label = .data$text
+      ),
+      hjust = "middle",
+      data = label_df
     ) +
     facet_wrap(
-      ~facet_title,
+      ~name2,
+      ncol = 4,
+      drop = FALSE,
       scales = "free_y"
     ) +
     labs(
@@ -1445,7 +1518,7 @@ faceted_flux_img <- function(station) {
     ) +
     scale_x_date(
       limits = c(min_date, max_date),
-      breaks = seq.Date(as.Date("2000-01-01"), max_date, by = "5 year"),
+      breaks = seq.Date(min_date, max_date, by = "5 year"),
       date_labels = "%Y"
     ) +
     guides(
