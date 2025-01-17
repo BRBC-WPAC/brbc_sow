@@ -6,9 +6,9 @@
 - 
 ## R Code
 
-R code was started by BRBC data group and shared with Thompson Aquatic Consulting (TAC).
-The completed by TAC with assistance and review from the BRBC data group.
-The R code was uploaded to [github.com](https://github.com/thompson-aquatic/brbc_sow) and shared with the BRBC data group.
+R code was started by BRBC WQTC data sub-group and shared with Thompson Aquatic Consulting (TAC).
+The completed by TAC with assistance and review from the data sub-group.
+The R code was uploaded to [github.com](https://github.com/thompson-aquatic/brbc_sow) and shared with the data sub-group.
 
 ### R Scripts
 
@@ -51,10 +51,12 @@ This list includes only those R packages that were explicitly installed, and not
 
 ## Plots
 
-Preliminary images of the plots were provided to TAC.
-Several cycles of feedback between the data group and TAC were completed before presenting the images to the rest of BRBC for review.
-Several cycles of feedback between the larger BRBC group and TAC were completed before the final version of the images was delivered.
-The images were uploaded to a [Google Drive folder](https://drive.google.com/drive/u/1/folders/12jJVdAqmx9kcRDNNZ28KyuhbIv2U6nEn) and shared with BRBC.
+Preliminary images of the plots were provided by the BRBC WQTC to TAC as an example of the desired plot format and content.
+Several cycles of feedback between the data sub-group and TAC were completed before presenting the images to the rest of BRBC WQTC for review.
+Several cycles of feedback between the larger BRBC WQTC, BRBC staff and TAC were completed before the final version of the images was delivered.
+The images were uploaded to a [Google Drive folder](https://drive.google.com/drive/u/1/folders/12jJVdAqmx9kcRDNNZ28KyuhbIv2U6nEn) for BRBC to access.
+
+(describe plots)
 - faceted
 - individual
 - flow
@@ -64,9 +66,12 @@ The images were uploaded to a [Google Drive folder](https://drive.google.com/dri
 
 ## Analysis
 
+(start with copy/paste from the report and adapt)
+ 
 - matching flow to WQ
 - colour coding according to percentiles
 	- ecdf
 	- comparison to latest year
 - log scale y-axis
 	- not for pH
+ - non-flux parameters
